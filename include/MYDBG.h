@@ -5,10 +5,11 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
-#include <WebServer.h>
 #include <time.h>
 #include <esp_task_wdt.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+
 
 #define MYDBG_MAX_LOGFILES 3
 #define MYDBG_WDT_DEFAULT 10
@@ -23,7 +24,8 @@ inline bool MYDBG_filesystemReady = false;
 inline bool MYDBG_menuFirstCall = true;
 inline unsigned long MYDBG_menuTimeout = 5000;
 
-WebServer MYDBG_server(80);
+AsyncWebServer MYDBG_server(80);
+AsyncWebSocket MYDBG_ws("/ws");
 
 inline void MYDBG_streamWebLine(const String &msg);
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile);
@@ -61,8 +63,6 @@ inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
             unsigned long __t0 = millis();                                                                          \
             while (millis() - __t0 < ms)                                                                            \
             {                                                                                                       \
-                if (MYDBG_webDebugEnabled)                                                                          \
-                    MYDBG_server.handleClient();                                                                    \
                 delay(10);                                                                                          \
             }                                                                                                       \
         }                                                                                                           \
@@ -73,6 +73,7 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
 {
     if (!MYDBG_webDebugEnabled || !MYDBG_webClientActive)
         return;
+
     StaticJsonDocument<256> doc;
     doc["timestamp"] = MYDBG_getTimestamp();
     doc["pgmFunc"] = func;
@@ -84,27 +85,12 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    WiFiClient client = MYDBG_server.client();
-    if (client && client.connected())
-    {
-        client.print(jsonStr);
-    }
-    else
-    {
-        MYDBG_webClientActive = false;
-    }
+    MYDBG_ws.textAll(jsonStr);
 }
-
 // Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLine(const String &msg)
 {
-    if (!MYDBG_webDebugEnabled || !MYDBG_webClientActive)
-        return;
-    WiFiClient client = MYDBG_server.client();
-    if (client && client.connected())
-        client.println(msg);
-    else
-        MYDBG_webClientActive = false;
+    
 }
 
 // LittleFS initialisieren
@@ -236,12 +222,80 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 // Web-Debug-Seite starten
 inline void MYDBG_startWebDebug()
 {
-    MYDBG_server.on("/status.html", HTTP_GET, []()
-                    { MYDBG_server.send(200, "text/html", "<html><body><h1>MYDBG Web-Debug</h1><p>Live-Debug läuft...</p></body></html>"); });
+    // HTTP-Handler für status.html
+    MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
+                    { request->send(200, "text/html", R"rawliteral(
+            <!DOCTYPE html>
+            <html lang="de">
+            <head>
+                <meta charset="UTF-8">
+                <title>MYDBG Web-Debug</title>
+                <style>
+                    body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 10px; }
+                    table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
+                    th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
+                    th { background: #222; }
+                    tr:nth-child(even) { background: #000; }
+                    #status { margin-bottom: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>MYDBG Web-Debug</h1>
+                <div id="status">Verbindung wird aufgebaut...</div>
+                <table id="logTable">
+                    <thead>
+                        <tr>
+                            <th>Zeit</th><th>Funktion</th><th>Zeile</th><th>Nachricht</th><th>Variable</th><th>Wert</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logBody"></tbody>
+                </table>
+                <script>
+                    let statusDiv = document.getElementById('status');
+                    let logBody = document.getElementById('logBody');
+                    let conn = new WebSocket('ws://' + location.host + '/ws');
+                    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv.";
+                    conn.onmessage = function(event) {
+                        let data = JSON.parse(event.data);
+                        let row = document.createElement('tr');
+                        row.innerHTML = "<td>" + data.timestamp + "</td>" +
+                                        "<td>" + data.pgmFunc + "</td>" +
+                                        "<td>" + data.pgmZeile + "</td>" +
+                                        "<td>" + data.msg + "</td>" +
+                                        "<td>" + data.varName + "</td>" +
+                                        "<td>" + data.varValue + "</td>";
+                        logBody.appendChild(row);
+                        let spacer = document.createElement('tr');
+                        spacer.innerHTML = "<td colspan='6'>&nbsp;</td>";
+                        logBody.appendChild(spacer);
+                        window.scrollTo(0, document.body.scrollHeight);
+                    };
+                    conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
+                </script>
+            </body>
+            </html>
+        )rawliteral"); });
+
+    // WebSocket Events
+    MYDBG_ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
+                        void *arg, uint8_t *data, size_t len)
+                     {
+        if (type == WS_EVT_CONNECT)
+        {
+            Serial.println("[MYDBG] WebSocket verbunden");
+            MYDBG_webClientActive = true;
+        }
+        else if (type == WS_EVT_DISCONNECT)
+        {
+            Serial.println("[MYDBG] WebSocket getrennt");
+            MYDBG_webClientActive = false;
+        } });
+
+    MYDBG_server.addHandler(&MYDBG_ws);
     MYDBG_server.begin();
-    MYDBG_webClientActive = true;
-    Serial.println("[MYDBG] Webserver gestartet auf /status.html");
-    Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
+
+    Serial.println("[MYDBG] Webserver + WebSocket gestartet auf /status.html");
+    Serial.println("\n[MYDBG] Zugriff: http://" + WiFi.localIP().toString() + "/status.html");
 }
 
 // Zeitstempel (lokal oder [keine Zeit])

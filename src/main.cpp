@@ -109,7 +109,9 @@ void setup()
 void loop()
 {
   MYDBG_MENUE();
+
   
+
   good_GesamtSchleife(); // einmalige Schleife als Beispiel für die Verwendung von MYDBG
   MYDBG(1, "globale Variable z einmal anzeigen ", z);
 }
