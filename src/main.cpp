@@ -11,6 +11,7 @@
 
 int zyklus = 0;
 bool loopEnde = false;
+int z = 10; // Globale Variable
 
 void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeoutSek = 15)
 {
@@ -79,6 +80,9 @@ void good_Schritt3()
 
 void good_GesamtSchleife()
 {
+  int z = 20; // lokale Variable
+  MYDBG(1,"Lokale Variable z", z); // 0 Sekunden warten, keine Json-Ausgabe
+  
   good_Schritt1();
   good_Schritt2();
   good_Schritt3();
@@ -98,12 +102,14 @@ void setup()
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
   good_Anzeige_Serial();
+
+  
 }
 
 void loop()
 {
   MYDBG_MENUE();
-
-  good_GesamtSchleife(); // einmalige Schleife als Beispiel für die Verwendung von MYDBG
   
+  good_GesamtSchleife(); // einmalige Schleife als Beispiel für die Verwendung von MYDBG
+  MYDBG(1, "globale Variable z einmal anzeigen ", z);
 }
