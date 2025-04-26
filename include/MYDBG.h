@@ -24,6 +24,7 @@ inline bool MYDBG_filesystemReady = false;
 inline bool MYDBG_menuFirstCall = true;
 inline unsigned long MYDBG_menuTimeout = 5000;
 inline int MYDBG_MAX_WATCHDOGS = 10; // Maximal 10 Watchdog-Einträge (einstellbar)
+inline bool protokollAktiv = true;
 
 AsyncWebServer MYDBG_server(80);
 AsyncWebSocket MYDBG_ws("/ws");
@@ -39,6 +40,132 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
+
+const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>MYDBG Web-Debug</title>
+  <style>
+    body { font-family: monospace; background-color: #e0ffe0; padding: 20px; }
+    h1, h2 { color: #006600; }
+    pre { background: #ffffff; padding: 10px; border: 1px solid #006600; overflow-x: auto; }
+    button { margin-top: 10px; padding: 5px 10px; font-size: 16px; }
+    #status { font-size: 24px; margin: 20px 0; }
+    .off { color: red; font-weight: bold; }
+    .on { color: green; font-weight: bold; }
+    #serverResponse { margin-top: 20px; font-weight: bold; color: blue; }
+  </style>
+</head>
+<body>
+
+<h1>MYDBG Web-Debug</h1>
+
+<div id="status" class="on">Protokoll AN</div>
+
+<button onclick="reloadLog()">Log neu laden</button>
+<button onclick="reloadWatchdog()">Watchdog neu laden</button>
+<button onclick="deleteLogs()">Logs löschen</button>
+<button onclick="enableProtocol()">Protokoll AN</button>
+<button onclick="disableProtocol()">Protokoll AUS</button>
+
+<div id="serverResponse"></div>
+
+<h2>Laufende Live-Stopps:</h2>
+<div id="live" style="white-space: pre-wrap; background: #ccffcc; padding: 10px; border: 1px solid #006600;"></div>
+
+<h2>Aktuelle Log-Liste:</h2>
+<pre id="logdata">Laden...</pre>
+
+<h2>Watchdog-Liste:</h2>
+<pre id="watchdogdata">Laden...</pre>
+
+<script>
+  const ws = new WebSocket(`ws://${location.hostname}/ws`);
+  ws.onmessage = (event) => {
+    document.getElementById('live').textContent += event.data + "\\n";
+  };
+
+  function reloadLog() {
+    fetch('/mydbg_data.json')
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('logdata').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(error => {
+        document.getElementById('logdata').textContent = "Fehler beim Laden der Logdaten!";
+      });
+  }
+
+  function reloadWatchdog() {
+    fetch('/mydbg_watchdog.json')
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('watchdogdata').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(error => {
+        document.getElementById('watchdogdata').textContent = "Fehler beim Laden der Watchdogdaten!";
+      });
+  }
+
+  function deleteLogs() {
+    fetch('/deleteLogs')
+      .then(() => {
+        document.getElementById('serverResponse').textContent = "Logs gelöscht";
+        reloadLog();
+        reloadWatchdog();
+      })
+      .catch(() => {
+        document.getElementById('serverResponse').textContent = "Fehler beim Löschen der Logs!";
+      });
+  }
+
+  function enableProtocol() {
+    fetch('/enableProtocol')
+      .then(() => {
+        document.getElementById('status').textContent = "Protokoll AN";
+        document.getElementById('status').className = "on";
+        document.getElementById('serverResponse').textContent = "Protokollierung AN";
+      });
+  }
+
+  function disableProtocol() {
+    fetch('/disableProtocol')
+      .then(() => {
+        document.getElementById('status').textContent = "Protokoll AUS";
+        document.getElementById('status').className = "off";
+        document.getElementById('serverResponse').textContent = "Protokollierung AUS";
+      });
+  }
+
+  function checkProtocolState() {
+    fetch('/getProtocolState')
+      .then(response => response.text())
+      .then(state => {
+        if (state.trim() === "AN") {
+          document.getElementById('status').textContent = "Protokoll AN";
+          document.getElementById('status').className = "on";
+        } else {
+          document.getElementById('status').textContent = "Protokoll AUS";
+          document.getElementById('status').className = "off";
+        }
+      })
+      .catch(error => {
+        document.getElementById('status').textContent = "Status unbekannt";
+        document.getElementById('status').className = "off";
+      });
+  }
+
+  // Direkt beim Start laden
+  reloadLog();
+  reloadWatchdog();
+  checkProtocolState();
+</script>
+
+</body>
+</html>
+)rawliteral";
 
 #define MYDBG(...) MYDBG_WRAPPER(__VA_ARGS__, MYDBG3, MYDBG2)(__VA_ARGS__)
 #define MYDBG_WRAPPER(_1, _2, _3, NAME, ...) NAME
@@ -164,6 +291,7 @@ inline void MYDBG_logToWatchdog(const JsonObject &lastEntry)
     }
 }
 
+
 // Log-Eintrag in JSON-Datei schreiben
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
 {
@@ -234,56 +362,72 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
         file.close();
     }
 }
+void deleteJsonLogs()
+{
+    if (LittleFS.exists("/mydbg_data.json"))
+    {
+        LittleFS.remove("/mydbg_data.json");
+        Serial.println("[MYDBG] /mydbg_data.json gelöscht.");
+    }
+    if (LittleFS.exists("/mydbg_watchdog.json"))
+    {
+        LittleFS.remove("/mydbg_watchdog.json");
+        Serial.println("[MYDBG] /mydbg_watchdog.json gelöscht.");
+    }
+    if (LittleFS.exists("/mydbg_status.json"))
+    {
+        LittleFS.remove("/mydbg_status.json");
+        Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
+    }
+    Serial.println("\aJSON-Dateien gelöscht!\a");
+}
 
 // Web-Debug-Seite starten
-inline void MYDBG_startWebDebug()
+void MYDBG_startWebDebug()
 {
-    MYDBG_server.on("/", HTTP_GET, []()
-                    { MYDBG_server.send_P(200, "text/html", MYDBG_HTML_PAGE); });
+    // Hauptseite (HTML-Seite anzeigen)
+    MYDBG_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+                    { request->send(200, "text/html", MYDBG_HTML_PAGE); });
 
-    MYDBG_server.on("/mydbg_data.json", HTTP_GET, []()
+    // Logdatei ausgeben
+    MYDBG_server.on("/log.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        File file = LittleFS.open("/mydbg_data.json", "r");
-        if (!file)
-        {
-            MYDBG_server.send(404, "text/plain", "Logdatei nicht gefunden");
+        if (!LittleFS.exists("/log.json")) {
+            request->send(404, "text/plain", "Logdatei nicht gefunden");
             return;
         }
-        MYDBG_server.streamFile(file, "application/json");
+        File file = LittleFS.open("/log.json", "r");
+        request->send(file, "/log.json", "application/json", false);
         file.close(); });
 
-    MYDBG_server.on("/mydbg_watchdog.json", HTTP_GET, []()
+    // Watchdogdatei ausgeben
+    MYDBG_server.on("/watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        File file = LittleFS.open("/mydbg_watchdog.json", "r");
-        if (!file)
-        {
-            MYDBG_server.send(404, "text/plain", "Watchdogdatei nicht gefunden");
+        if (!LittleFS.exists("/watchdog.json")) {
+            request->send(404, "text/plain", "Watchdogdatei nicht gefunden");
             return;
         }
-        MYDBG_server.streamFile(file, "application/json");
+        File file = LittleFS.open("/watchdog.json", "r");
+        request->send(file, "/watchdog.json", "application/json", false);
         file.close(); });
 
-    MYDBG_server.on("/deleteLogs", HTTP_GET, []()
+    // Logs löschen
+    MYDBG_server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         deleteJsonLogs();
-        MYDBG_server.send(200, "text/plain", "Logs gelöscht"); });
+        request->send(200, "text/plain", "Logs gelöscht"); });
 
-    MYDBG_server.on("/enableProtocol", HTTP_GET, []()
+    // Protokoll AN
+    MYDBG_server.on("/protokoll_an", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        MYDBG_isEnabled = true;
-        MYDBG_stopEnabled = true;
-        MYDBG_server.send(200, "text/plain", "Protokoll AN"); });
+        protokollAktiv = true;
+        request->send(200, "text/plain", "Protokoll AN"); });
 
-    MYDBG_server.on("/disableProtocol", HTTP_GET, []()
+    // Protokoll AUS
+    MYDBG_server.on("/protokoll_aus", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        MYDBG_isEnabled = false;
-        MYDBG_stopEnabled = false;
-        MYDBG_server.send(200, "text/plain", "Protokoll AUS"); });
-
-    MYDBG_server.begin();
-    MYDBG_webClientActive = true;
-    Serial.println("[MYDBG] Webserver gestartet auf /");
-    Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/");
+        protokollAktiv = false;
+        request->send(200, "text/plain", "Protokoll AUS"); });
 }
 
 // Zeitstempel (lokal oder [keine Zeit])
@@ -354,25 +498,6 @@ void displayJsonLogs()
     }
 }
 
-void deleteJsonLogs()
-{
-    if (LittleFS.exists("/mydbg_data.json"))
-    {
-        LittleFS.remove("/mydbg_data.json");
-        Serial.println("[MYDBG] /mydbg_data.json gelöscht.");
-    }
-    if (LittleFS.exists("/mydbg_watchdog.json"))
-    {
-        LittleFS.remove("/mydbg_watchdog.json");
-        Serial.println("[MYDBG] /mydbg_watchdog.json gelöscht.");
-    }
-    if (LittleFS.exists("/mydbg_status.json"))
-    {
-        LittleFS.remove("/mydbg_status.json");
-        Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
-    }
-    Serial.println("\aJSON-Dateien gelöscht!\a");
-}
 
 void processSerialInput()
 {
