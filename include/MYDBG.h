@@ -385,6 +385,25 @@ void deleteJsonLogs()
 // Web-Debug-Seite starten
 void MYDBG_startWebDebug()
 {
+    // Dummy - Dateien anlegen, falls sie nicht existieren 
+    if (!LittleFS.exists("/mydbg_data.json"))
+    {
+        File f = LittleFS.open("/mydbg_data.json", "w");
+        if (f)
+        {
+            f.print("{\"log\":[]}");
+            f.close();
+        }
+    }
+    if (!LittleFS.exists("/mydbg_watchdog.json"))
+    {
+        File f = LittleFS.open("/mydbg_watchdog.json", "w");
+        if (f)
+        {
+            f.print("{\"watchdogs\":[]}");
+            f.close();
+        }
+    }
     // Hauptseite (HTML-Seite anzeigen)
     MYDBG_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", MYDBG_HTML_PAGE); });
