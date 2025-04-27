@@ -10,7 +10,6 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
-
 #define MYDBG_MAX_LOGFILES 3
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
@@ -42,6 +41,9 @@ inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 
 const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
+
+
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -56,16 +58,39 @@ const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
     .off { color: red; font-weight: bold; }
     .on { color: green; font-weight: bold; }
     #serverResponse { margin-top: 20px; font-weight: bold; color: blue; }
-  </style>
-</head>
-<body>
+  
+    .log-entry {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    background: #f0fff0;
+    border: 1px solid #006600;
+    border-radius: 5px;
+    padding: 5px;
+    }
 
-<h1>MYDBG Web-Debug</h1>
+    .log-field {
+    flex: 0 0 auto;
+    min-width: 90px;
+    max-width: 220px;
+    padding: 4px;
+    margin: 2px;
+    border: 1px solid #aaa;
+    background: #ffffff;
+    font-size: 14px;
+    word-break: break-word;
+    white-space: normal;
+    }
 
-<div id="status" class="on">Protokoll AN</div>
+    
+        </style>
+    </head>
+    <body>
 
-<button onclick="reloadLog()">Log neu laden</button>
-<button onclick="reloadWatchdog()">Watchdog neu laden</button>
+<div id="status" class="on">MYDBG_Debug Protokoll AN</div>
+
+<button onclick="window.open('/mydbg_data.json', '_blank')">link zur Json_Log_Datei</button>
+<button onclick="window.open('/mydbg_watchdog.json', '_blank')">link zur Json_Watchdog_datei</button>
 <button onclick="deleteLogs()">Logs löschen</button>
 <button onclick="enableProtocol()">Protokoll AN</button>
 <button onclick="disableProtocol()">Protokoll AUS</button>
@@ -73,69 +98,67 @@ const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
 <div id="serverResponse"></div>
 
 <h2>Laufende Live-Stopps:</h2>
-<div id="live" style="white-space: pre-wrap; background: #ccffcc; padding: 10px; border: 1px solid #006600;"></div>
+<div id="liveLogs" style="display: flex; flex-direction: column; gap: 5px;"></div>
 
-<h2>Aktuelle Log-Liste:</h2>
-<pre id="logdata">Laden...</pre>
 
-<h2>Watchdog-Liste:</h2>
-<pre id="watchdogdata">Laden...</pre>
 
 <script>
   const ws = new WebSocket(`ws://${location.hostname}/ws`);
-  ws.onmessage = (event) => {
-    document.getElementById('live').textContent += event.data + "\\n";
-  };
+  
+  
+ws.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
 
-  function reloadLog() {
-    fetch('/mydbg_data.json')
-      .then(response => response.json())
-      .then(data => {
-        document.getElementById('logdata').textContent = JSON.stringify(data, null, 2);
-      })
-      .catch(error => {
-        document.getElementById('logdata').textContent = "Fehler beim Laden der Logdaten!";
-      });
-  }
+    // Neues Log-Element erstellen
+    const logEntry = document.createElement('div');
+    logEntry.className = 'log-entry';
 
-  function reloadWatchdog() {
-    fetch('/mydbg_watchdog.json')
-      .then(response => response.json())
-      .then(data => {
-        document.getElementById('watchdogdata').textContent = JSON.stringify(data, null, 2);
-      })
-      .catch(error => {
-        document.getElementById('watchdogdata').textContent = "Fehler beim Laden der Watchdogdaten!";
-      });
-  }
+    // Neun Felder erstellen
+    const fields = [
+      data.pgmZeile,
+      data.pgmFunc,
+      data.timestamp,
+      data.millis,
+      data.msg,
+      data.varName,
+      data.varValue,
+      data.watchdogCode || "",
+      data.watchdogText || ""
+    ];
 
-  function deleteLogs() {
-    fetch('/deleteLogs')
-      .then(() => {
-        document.getElementById('serverResponse').textContent = "Logs gelöscht";
-        reloadLog();
-        reloadWatchdog();
-      })
-      .catch(() => {
-        document.getElementById('serverResponse').textContent = "Fehler beim Löschen der Logs!";
-      });
+    fields.forEach(content => {
+      const field = document.createElement('div');
+      field.className = 'log-field';
+      field.textContent = content;
+      logEntry.appendChild(field);
+    });
+
+    // Neues Log oben einfügen
+    const liveLogs = document.getElementById('liveLogs');
+    liveLogs.prepend(logEntry);
+
+  } catch (err) {
+    console.error("Fehler beim Verarbeiten der WebSocket-Nachricht:", err);
   }
+};
+
 
   function enableProtocol() {
     fetch('/enableProtocol')
       .then(() => {
-        document.getElementById('status').textContent = "Protokoll AN";
+        document.getElementById('status').textContent = "MYDBG Web-Debug  Protokoll AN";
         document.getElementById('status').className = "on";
-        document.getElementById('serverResponse').textContent = "Protokollierung AN";
+        document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe  AN";
       });
   }
 
   function disableProtocol() {
     fetch('/disableProtocol')
       .then(() => {
-        document.getElementById('status').textContent = "Protokoll AUS";
+        document.getElementById('status').textContent = "MYDGB WEB-Debug  Protokoll AUS";
         document.getElementById('status').className = "off";
-        document.getElementById('serverResponse').textContent = "Protokollierung AUS";
+        document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AUS";
       });
   }
 
@@ -144,10 +167,10 @@ const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
       .then(response => response.text())
       .then(state => {
         if (state.trim() === "AN") {
-          document.getElementById('status').textContent = "Protokoll AN";
+          document.getElementById('status').textContent = "MYDBG-Debug Protokoll AN";
           document.getElementById('status').className = "on";
         } else {
-          document.getElementById('status').textContent = "Protokoll AUS";
+          document.getElementById('status').textContent = "MYDBG-Debug Protokoll AUS";
           document.getElementById('status').className = "off";
         }
       })
@@ -218,7 +241,6 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
 // Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLine(const String &msg)
 {
-    
 }
 
 // LittleFS initialisieren
@@ -290,7 +312,6 @@ inline void MYDBG_logToWatchdog(const JsonObject &lastEntry)
         out.close();
     }
 }
-
 
 // Log-Eintrag in JSON-Datei schreiben
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
@@ -385,7 +406,7 @@ void deleteJsonLogs()
 // Web-Debug-Seite starten
 void MYDBG_startWebDebug()
 {
-    // Dummy - Dateien anlegen, falls sie nicht existieren 
+    // Dummy - Dateien anlegen, falls sie nicht existieren
     if (!LittleFS.exists("/mydbg_data.json"))
     {
         File f = LittleFS.open("/mydbg_data.json", "w");
@@ -412,7 +433,7 @@ void MYDBG_startWebDebug()
     MYDBG_server.on("/mydbg_data.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         if (!LittleFS.exists("/mydbg_data.json")) {
-            request->send(404, "text/plain", "Logdatei nicht gefunden");
+            request->send(404, "text/plain", "Logdatei mydbg_data.json nicht gefunden/exists");
             return;
         }
         File file = LittleFS.open("/mydbg_data.json", "r");
@@ -423,7 +444,7 @@ void MYDBG_startWebDebug()
     MYDBG_server.on("/mydbg_watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         if (!LittleFS.exists("/mydbg_watchdog.json")) {
-            request->send(404, "text/plain", "Watchdogdatei nicht gefunden");
+            request->send(404, "text/plain", "Watchdogdatei mydbg_watchdog.json nicht gefunden/exists");
             return;
         }
         File file = LittleFS.open("/mydbg_watchdog.json", "r");
@@ -529,7 +550,6 @@ void displayJsonLogs()
     }
 }
 
-
 void processSerialInput()
 {
     unsigned long timeout = MYDBG_menuFirstCall ? 15000 : MYDBG_menuTimeout;
@@ -593,6 +613,9 @@ void processSerialInput()
         MYDBG_startWebDebug();
 
         Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/");
+        Serial.println("\n[MYDBG] Modus 4 Web-Debug Logdatei mydbg_data.json  aktiv: http://" + WiFi.localIP().toString() + "/mydbg_data.json");
+        Serial.println("\n[MYDBG] Modus 4 Web-Debug Watchdog mydbg_watchdog.json  aktiv: http://" + WiFi.localIP().toString() + "/mydbg_watchdog.json");
+
         delay(3000);
     }
     else if (input == "5")
@@ -622,9 +645,9 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
 {
     if (!MYDBG_filesystemReady)
         MYDBG_initFilesystem();
-   while (Serial.available())
-       Serial.read(); // Eingabepuffer leeren
-   
+    while (Serial.available())
+        Serial.read(); // Eingabepuffer leeren
+
     Serial.println();
     Serial.println(String("=== MYDBG Menü (aufgerufen in: ") + aufruferFunc + ") ===");
     Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + STOP aktiv" : "  1 = Debug AUSGABE + STOP aktiv");
@@ -636,7 +659,7 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
     Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)");
     processSerialInput(); // Eingabe verarbeiten
 }
-        
+
 #define MYDBG_MENUE() MYDBG_MENUE_IMPL(__FUNCTION__)
 
 #endif // MYDBG_H
