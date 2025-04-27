@@ -97,7 +97,7 @@ void setup()
   delay(200);
   
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
-
+  MYDBG_server.begin();
   MYDBG_initTime(); // NTP-Zeit initialisieren wird im Main aufgefrufen wenn WLAN zur Verfügung steht
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 

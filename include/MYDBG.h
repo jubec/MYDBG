@@ -389,45 +389,57 @@ void MYDBG_startWebDebug()
     MYDBG_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", MYDBG_HTML_PAGE); });
 
-    // Logdatei ausgeben
-    MYDBG_server.on("/log.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    // Logdatei ausgeben (richtiger Pfad: /mydbg_data.json)
+    MYDBG_server.on("/mydbg_data.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        if (!LittleFS.exists("/log.json")) {
+        if (!LittleFS.exists("/mydbg_data.json")) {
             request->send(404, "text/plain", "Logdatei nicht gefunden");
             return;
         }
-        File file = LittleFS.open("/log.json", "r");
-        request->send(file, "/log.json", "application/json", false);
+        File file = LittleFS.open("/mydbg_data.json", "r");
+        request->send(file, "/mydbg_data.json", "application/json", false);
         file.close(); });
 
-    // Watchdogdatei ausgeben
-    MYDBG_server.on("/watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    // Watchdogdatei ausgeben (richtiger Pfad: /mydbg_watchdog.json)
+    MYDBG_server.on("/mydbg_watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
-        if (!LittleFS.exists("/watchdog.json")) {
+        if (!LittleFS.exists("/mydbg_watchdog.json")) {
             request->send(404, "text/plain", "Watchdogdatei nicht gefunden");
             return;
         }
-        File file = LittleFS.open("/watchdog.json", "r");
-        request->send(file, "/watchdog.json", "application/json", false);
+        File file = LittleFS.open("/mydbg_watchdog.json", "r");
+        request->send(file, "/mydbg_watchdog.json", "application/json", false);
         file.close(); });
 
     // Logs löschen
-    MYDBG_server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
+    MYDBG_server.on("/deleteLogs", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         deleteJsonLogs();
         request->send(200, "text/plain", "Logs gelöscht"); });
 
     // Protokoll AN
-    MYDBG_server.on("/protokoll_an", HTTP_GET, [](AsyncWebServerRequest *request)
+    MYDBG_server.on("/enableProtocol", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         protokollAktiv = true;
         request->send(200, "text/plain", "Protokoll AN"); });
 
     // Protokoll AUS
-    MYDBG_server.on("/protokoll_aus", HTTP_GET, [](AsyncWebServerRequest *request)
+    MYDBG_server.on("/disableProtocol", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
         protokollAktiv = false;
         request->send(200, "text/plain", "Protokoll AUS"); });
+
+    // Protokoll-Status (für Status-Anzeige beim Seitenladen)
+    MYDBG_server.on("/getProtocolState", HTTP_GET, [](AsyncWebServerRequest *request)
+                    {
+        String state = protokollAktiv ? "AN" : "AUS";
+        request->send(200, "text/plain", state); });
+
+    // WebSocket starten
+    MYDBG_server.addHandler(&MYDBG_ws);
+
+    // Server starten
+    MYDBG_server.begin();
 }
 
 // Zeitstempel (lokal oder [keine Zeit])
@@ -561,7 +573,7 @@ void processSerialInput()
         MYDBG_webDebugEnabled = true;
         MYDBG_startWebDebug();
 
-        Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
+        Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/");
         delay(3000);
     }
     else if (input == "5")
