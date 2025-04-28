@@ -97,6 +97,22 @@ void setup()
   delay(200);
   
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
+
+  if (!LittleFS.exists("/mydbg_data.json"))
+  {
+    File f = LittleFS.open("/mydbg_data.json", "w");
+    if (f)
+    {
+      f.println("{\"log\":[]}");
+      f.close();
+      Serial.println("[MYDBG] /mydbg_data.json wurde neu mit leeren Logs erstellt!");
+    }
+    else
+    {
+      Serial.println("[MYDBG] Fehler beim Erstellen von /mydbg_data.json!");
+    }
+  }
+
   MYDBG_server.begin();
   MYDBG_initTime(); // NTP-Zeit initialisieren wird im Main aufgefrufen wenn WLAN zur Verfügung steht
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen

@@ -103,88 +103,108 @@ const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
 
 
 <script>
-  const ws = new WebSocket(`ws://${location.hostname}/ws`);
-  
-  
+const ws = new WebSocket(`ws://${location.hostname}/ws`);
+
+// Live-Logs per WebSocket empfangen
 ws.onmessage = (event) => {
   try {
     const data = JSON.parse(event.data);
-
-    // Neues Log-Element erstellen
-    const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry';
-
-    // Neun Felder erstellen
-    const fields = [
-      data.pgmZeile,
-      data.pgmFunc,
-      data.timestamp,
-      data.millis,
-      data.msg,
-      data.varName,
-      data.varValue,
-      data.watchdogCode || "",
-      data.watchdogText || ""
-    ];
-
-    fields.forEach(content => {
-      const field = document.createElement('div');
-      field.className = 'log-field';
-      field.textContent = content;
-      logEntry.appendChild(field);
-    });
-
-    // Neues Log oben einfügen
-    const liveLogs = document.getElementById('liveLogs');
-    liveLogs.prepend(logEntry);
-
+    addLogEntry(data, true); // true = oben einfügen
   } catch (err) {
     console.error("Fehler beim Verarbeiten der WebSocket-Nachricht:", err);
   }
 };
 
+// Funktion zum Erzeugen einer Log-Zeile
+function addLogEntry(data, insertOnTop = false) {
+  const logEntry = document.createElement('div');
+  logEntry.className = 'log-entry';
 
-  function enableProtocol() {
-    fetch('/enableProtocol')
-      .then(() => {
-        document.getElementById('status').textContent = "MYDBG Web-Debug  Protokoll AN";
+  const fields = [
+    data.pgmZeile || "",
+    data.pgmFunc || "",
+    data.timestamp || "",
+    data.millis !== undefined ? data.millis : "",
+    data.msg || "",
+    data.varName || "",
+    data.varValue !== undefined ? data.varValue : "",
+    data.watchdogCode || "",
+    data.watchdogText || ""
+  ];
+
+  fields.forEach(content => {
+    const field = document.createElement('div');
+    field.className = 'log-field';
+    field.textContent = content;
+    logEntry.appendChild(field);
+  });
+
+  const liveLogs = document.getElementById('liveLogs');
+  if (insertOnTop && liveLogs.firstChild) {
+    liveLogs.insertBefore(logEntry, liveLogs.firstChild);
+  } else {
+    liveLogs.appendChild(logEntry);
+  }
+}
+
+// JSON-Logs beim Seitenstart laden
+function loadInitialLogs() {
+  fetch('/mydbg_data.json')
+    .then(response => response.json())
+    .then(json => {
+      if (json.log && Array.isArray(json.log)) {
+        // Von neu nach alt (also oben der neueste)
+        json.log.slice().reverse().forEach(entry => {
+          addLogEntry(entry, false); // false = unten anhängen
+        });
+      }
+    })
+    .catch(err => console.error("Fehler beim Laden der initialen Logs:", err));
+}
+
+// Buttons
+function enableProtocol() {
+  fetch('/enableProtocol')
+    .then(() => {
+      document.getElementById('status').textContent = "MYDBG Web-Debug Protokoll AN";
+      document.getElementById('status').className = "on";
+      document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AN";
+    });
+}
+
+function disableProtocol() {
+  fetch('/disableProtocol')
+    .then(() => {
+      document.getElementById('status').textContent = "MYDBG Web-Debug Protokoll AUS";
+      document.getElementById('status').className = "off";
+      document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AUS";
+    });
+}
+
+function checkProtocolState() {
+  fetch('/getProtocolState')
+    .then(response => response.text())
+    .then(state => {
+      if (state.trim() === "AN") {
+        document.getElementById('status').textContent = "MYDBG-Debug Protokoll AN";
         document.getElementById('status').className = "on";
-        document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe  AN";
-      });
-  }
-
-  function disableProtocol() {
-    fetch('/disableProtocol')
-      .then(() => {
-        document.getElementById('status').textContent = "MYDGB WEB-Debug  Protokoll AUS";
+      } else {
+        document.getElementById('status').textContent = "MYDBG-Debug Protokoll AUS";
         document.getElementById('status').className = "off";
-        document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AUS";
-      });
-  }
+      }
+    })
+    .catch(error => {
+      document.getElementById('status').textContent = "Status unbekannt";
+      document.getElementById('status').className = "off";
+    });
+}
 
-  function checkProtocolState() {
-    fetch('/getProtocolState')
-      .then(response => response.text())
-      .then(state => {
-        if (state.trim() === "AN") {
-          document.getElementById('status').textContent = "MYDBG-Debug Protokoll AN";
-          document.getElementById('status').className = "on";
-        } else {
-          document.getElementById('status').textContent = "MYDBG-Debug Protokoll AUS";
-          document.getElementById('status').className = "off";
-        }
-      })
-      .catch(error => {
-        document.getElementById('status').textContent = "Status unbekannt";
-        document.getElementById('status').className = "off";
-      });
-  }
+// Start
+loadInitialLogs();
+checkProtocolState();
 
-  // Direkt beim Start laden
-  reloadLog();
-  reloadWatchdog();
-  checkProtocolState();
 </script>
+
 
 </body>
 </html>
