@@ -1,4 +1,4 @@
-// Datei: MYDBG.h – vollständige Debug-Headerdatei (Stand April 2025)
+// Datei: MYDBG.h – WEb Mit Schaltern aber keine ausgabe vollständige Debug-Headerdatei (Stand April 2025)
 #ifndef MYDBG_H
 #define MYDBG_H
 
