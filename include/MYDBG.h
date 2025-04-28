@@ -1,13 +1,13 @@
-// Datei: MYDBG.h – WEb Mit Schaltern aber keine ausgabe vollständige Debug-Headerdatei (Stand April 2025)
+// Datei: MYDBG.h – vollständige Debug-Headerdatei (Stand April 2025)
 #ifndef MYDBG_H
 #define MYDBG_H
 
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <WebServer.h>
 #include <time.h>
 #include <esp_task_wdt.h>
-#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
 #define MYDBG_MAX_LOGFILES 3
@@ -22,11 +22,8 @@ inline bool MYDBG_webClientActive = false;
 inline bool MYDBG_filesystemReady = false;
 inline bool MYDBG_menuFirstCall = true;
 inline unsigned long MYDBG_menuTimeout = 5000;
-inline int MYDBG_MAX_WATCHDOGS = 10; // Maximal 10 Watchdog-Einträge (einstellbar)
-inline bool protokollAktiv = true;
 
-AsyncWebServer MYDBG_server(80);
-AsyncWebSocket MYDBG_ws("/ws");
+WebServer MYDBG_server(80);
 
 inline void MYDBG_streamWebLine(const String &msg);
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile);
@@ -39,176 +36,6 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
-
-const char MYDBG_HTML_PAGE[] PROGMEM = R"rawliteral(
-
-
-
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>MYDBG Web-Debug</title>
-  <style>
-    body { font-family: monospace; background-color: #e0ffe0; padding: 20px; }
-    h1, h2 { color: #006600; }
-    pre { background: #ffffff; padding: 10px; border: 1px solid #006600; overflow-x: auto; }
-    button { margin-top: 10px; padding: 5px 10px; font-size: 16px; }
-    #status { font-size: 24px; margin: 20px 0; }
-    .off { color: red; font-weight: bold; }
-    .on { color: green; font-weight: bold; }
-    #serverResponse { margin-top: 20px; font-weight: bold; color: blue; }
-  
-    .log-entry {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    background: #f0fff0;
-    border: 1px solid #006600;
-    border-radius: 5px;
-    padding: 5px;
-    }
-
-    .log-field {
-    flex: 0 0 auto;
-    min-width: 90px;
-    max-width: 220px;
-    padding: 4px;
-    margin: 2px;
-    border: 1px solid #aaa;
-    background: #ffffff;
-    font-size: 14px;
-    word-break: break-word;
-    white-space: normal;
-    }
-
-    
-        </style>
-    </head>
-    <body>
-
-<div id="status" class="on">MYDBG_Debug Protokoll AN</div>
-
-<button onclick="window.open('/mydbg_data.json', '_blank')">link zur Json_Log_Datei</button>
-<button onclick="window.open('/mydbg_watchdog.json', '_blank')">link zur Json_Watchdog_datei</button>
-<button onclick="deleteLogs()">Logs löschen</button>
-<button onclick="enableProtocol()">Protokoll AN</button>
-<button onclick="disableProtocol()">Protokoll AUS</button>
-
-<div id="serverResponse"></div>
-
-<h2>Laufende Live-Stopps:</h2>
-<div id="liveLogs" style="display: flex; flex-direction: column; gap: 5px;"></div>
-
-
-
-<script>
-const ws = new WebSocket(`ws://${location.hostname}/ws`);
-
-// Live-Logs per WebSocket empfangen
-ws.onmessage = (event) => {
-  try {
-    const data = JSON.parse(event.data);
-    addLogEntry(data, true); // true = oben einfügen
-  } catch (err) {
-    console.error("Fehler beim Verarbeiten der WebSocket-Nachricht:", err);
-  }
-};
-
-// Funktion zum Erzeugen einer Log-Zeile
-function addLogEntry(data, insertOnTop = false) {
-  const logEntry = document.createElement('div');
-  logEntry.className = 'log-entry';
-
-  const fields = [
-    data.pgmZeile || "",
-    data.pgmFunc || "",
-    data.timestamp || "",
-    data.millis !== undefined ? data.millis : "",
-    data.msg || "",
-    data.varName || "",
-    data.varValue !== undefined ? data.varValue : "",
-    data.watchdogCode || "",
-    data.watchdogText || ""
-  ];
-
-  fields.forEach(content => {
-    const field = document.createElement('div');
-    field.className = 'log-field';
-    field.textContent = content;
-    logEntry.appendChild(field);
-  });
-
-  const liveLogs = document.getElementById('liveLogs');
-  if (insertOnTop && liveLogs.firstChild) {
-    liveLogs.insertBefore(logEntry, liveLogs.firstChild);
-  } else {
-    liveLogs.appendChild(logEntry);
-  }
-}
-
-// JSON-Logs beim Seitenstart laden
-function loadInitialLogs() {
-  fetch('/mydbg_data.json')
-    .then(response => response.json())
-    .then(json => {
-      if (json.log && Array.isArray(json.log)) {
-        // Von neu nach alt (also oben der neueste)
-        json.log.slice().reverse().forEach(entry => {
-          addLogEntry(entry, false); // false = unten anhängen
-        });
-      }
-    })
-    .catch(err => console.error("Fehler beim Laden der initialen Logs:", err));
-}
-
-// Buttons
-function enableProtocol() {
-  fetch('/enableProtocol')
-    .then(() => {
-      document.getElementById('status').textContent = "MYDBG Web-Debug Protokoll AN";
-      document.getElementById('status').className = "on";
-      document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AN";
-    });
-}
-
-function disableProtocol() {
-  fetch('/disableProtocol')
-    .then(() => {
-      document.getElementById('status').textContent = "MYDBG Web-Debug Protokoll AUS";
-      document.getElementById('status').className = "off";
-      document.getElementById('serverResponse').textContent = "Protokollierung der MYDBG Aufrufe AUS";
-    });
-}
-
-function checkProtocolState() {
-  fetch('/getProtocolState')
-    .then(response => response.text())
-    .then(state => {
-      if (state.trim() === "AN") {
-        document.getElementById('status').textContent = "MYDBG-Debug Protokoll AN";
-        document.getElementById('status').className = "on";
-      } else {
-        document.getElementById('status').textContent = "MYDBG-Debug Protokoll AUS";
-        document.getElementById('status').className = "off";
-      }
-    })
-    .catch(error => {
-      document.getElementById('status').textContent = "Status unbekannt";
-      document.getElementById('status').className = "off";
-    });
-}
-
-// Start
-loadInitialLogs();
-checkProtocolState();
-
-</script>
-
-
-</body>
-</html>
-)rawliteral";
 
 #define MYDBG(...) MYDBG_WRAPPER(__VA_ARGS__, MYDBG3, MYDBG2)(__VA_ARGS__)
 #define MYDBG_WRAPPER(_1, _2, _3, NAME, ...) NAME
@@ -234,6 +61,8 @@ checkProtocolState();
             unsigned long __t0 = millis();                                                                          \
             while (millis() - __t0 < ms)                                                                            \
             {                                                                                                       \
+                if (MYDBG_webDebugEnabled)                                                                          \
+                    MYDBG_server.handleClient();                                                                    \
                 delay(10);                                                                                          \
             }                                                                                                       \
         }                                                                                                           \
@@ -244,7 +73,6 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
 {
     if (!MYDBG_webDebugEnabled || !MYDBG_webClientActive)
         return;
-
     StaticJsonDocument<256> doc;
     doc["timestamp"] = MYDBG_getTimestamp();
     doc["pgmFunc"] = func;
@@ -256,11 +84,27 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    MYDBG_ws.textAll(jsonStr);
+    WiFiClient client = MYDBG_server.client();
+    if (client && client.connected())
+    {
+        client.print(jsonStr);
+    }
+    else
+    {
+        MYDBG_webClientActive = false;
+    }
 }
+
 // Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLine(const String &msg)
 {
+    if (!MYDBG_webDebugEnabled || !MYDBG_webClientActive)
+        return;
+    WiFiClient client = MYDBG_server.client();
+    if (client && client.connected())
+        client.println(msg);
+    else
+        MYDBG_webClientActive = false;
 }
 
 // LittleFS initialisieren
@@ -272,11 +116,7 @@ inline void MYDBG_initFilesystem()
         Serial.println("[MYDBG] LittleFS erfolgreich gemountet.");
     MYDBG_filesystemReady = true;
 }
-// Hilfsfunktion für Watchdog-Kennung
-inline String MYDBG_getWatchdogText()
-{
-    return "Watchdog Reset erkannt"; // Später kann man hier dynamisch erweitern!
-}
+
 // Watchdog aktivieren
 inline void MYDBG_setWatchdog(int sekunden)
 {
@@ -293,52 +133,14 @@ inline void MYDBG_stopAusgabe(const String &msg, const String &varName, const St
     Serial.println(ausgabe);
     MYDBG_streamWebLine(ausgabe);
 }
-inline void MYDBG_logToWatchdog(const JsonObject &lastEntry)
-{
-    StaticJsonDocument<2048> wdDoc;
-    File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
-    if (wdFile)
-    {
-        DeserializationError error = deserializeJson(wdDoc, wdFile);
-        wdFile.close();
-        if (error)
-            wdDoc.clear();
-    }
-
-    JsonArray wdArr;
-    if (!wdDoc["watchdogs"].is<JsonArray>())
-        wdArr = wdDoc.createNestedArray("watchdogs");
-    else
-        wdArr = wdDoc["watchdogs"].as<JsonArray>();
-
-    while (wdArr.size() >= MYDBG_MAX_WATCHDOGS)
-        wdArr.remove(0);
-
-    JsonObject w = wdArr.add<JsonObject>();
-    w["pgmZeile"] = lastEntry["pgmZeile"];
-    w["pgmFunc"] = lastEntry["pgmFunc"];
-    w["timestamp"] = lastEntry["timestamp"];
-    w["millis"] = lastEntry["millis"];
-    w["msg"] = lastEntry["msg"];
-    w["varName"] = lastEntry["varName"];
-    w["varValue"] = lastEntry["varValue"];
-    w["watchdogCode"] = lastEntry["watchdogCode"];
-    w["watchdogText"] = lastEntry["watchdogText"];
-
-    File out = LittleFS.open("/mydbg_watchdog.json", "w");
-    if (out)
-    {
-        serializeJson(wdDoc, out);
-        out.close();
-    }
-}
 
 // Log-Eintrag in JSON-Datei schreiben
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
+
 {
     bool isWatchdogReset = (esp_reset_reason() == ESP_RST_WDT);
 
-    StaticJsonDocument<2048> doc;
+    StaticJsonDocument<1024> doc;
     File file = LittleFS.open("/mydbg_data.json", "r");
     if (file)
     {
@@ -358,15 +160,16 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
         arr.remove(0);
 
     JsonObject entry = arr.createNestedObject();
-    entry["pgmZeile"] = line;
-    entry["pgmFunc"] = func;
     entry["timestamp"] = MYDBG_getTimestamp();
     entry["millis"] = millis();
+    entry["pgmFunc"] = func;
+    entry["pgmZeile"] = line;
     entry["msg"] = text;
     entry["varName"] = varName;
     entry["varValue"] = varValue;
-    entry["watchdogCode"] = isWatchdogReset ? "123" : "";
-    entry["watchdogText"] = isWatchdogReset ? MYDBG_getWatchdogText() : "";
+    entry["resetReason"] = (int)esp_reset_reason();
+    if (isWatchdogReset)
+        entry["watchdog"] = true;
 
     file = LittleFS.open("/mydbg_data.json", "w");
     if (file)
@@ -375,10 +178,36 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
         file.close();
     }
 
-    // Wenn Watchdog aktiv: zusätzlich auch in die Watchdog-Datei speichern
     if (isWatchdogReset)
     {
-        MYDBG_logToWatchdog(entry);
+        StaticJsonDocument<512> wdDoc;
+        File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
+        if (wdFile)
+        {
+            deserializeJson(wdDoc, wdFile);
+            wdFile.close();
+        }
+        JsonArray wdArr;
+        if (!wdDoc["watchdogs"].is<JsonArray>())
+            wdArr = wdDoc.createNestedArray("watchdogs");
+        else
+            wdArr = wdDoc["watchdogs"].as<JsonArray>();
+
+        JsonObject w = wdArr.createNestedObject();
+        w["timestamp"] = MYDBG_getTimestamp();
+        w["msg"] = text;
+        w["func"] = func;
+        w["line"] = line;
+        w["var"] = varName;
+        w["val"] = varValue;
+        w["reason"] = (int)esp_reset_reason();
+
+        File out = LittleFS.open("/mydbg_watchdog.json", "w");
+        if (out)
+        {
+            serializeJson(wdDoc, out);
+            out.close();
+        }
     }
 }
 
@@ -403,103 +232,16 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
         file.close();
     }
 }
-void deleteJsonLogs()
-{
-    if (LittleFS.exists("/mydbg_data.json"))
-    {
-        LittleFS.remove("/mydbg_data.json");
-        Serial.println("[MYDBG] /mydbg_data.json gelöscht.");
-    }
-    if (LittleFS.exists("/mydbg_watchdog.json"))
-    {
-        LittleFS.remove("/mydbg_watchdog.json");
-        Serial.println("[MYDBG] /mydbg_watchdog.json gelöscht.");
-    }
-    if (LittleFS.exists("/mydbg_status.json"))
-    {
-        LittleFS.remove("/mydbg_status.json");
-        Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
-    }
-    Serial.println("\aJSON-Dateien gelöscht!\a");
-}
 
 // Web-Debug-Seite starten
-void MYDBG_startWebDebug()
+inline void MYDBG_startWebDebug()
 {
-    // Dummy - Dateien anlegen, falls sie nicht existieren
-    if (!LittleFS.exists("/mydbg_data.json"))
-    {
-        File f = LittleFS.open("/mydbg_data.json", "w");
-        if (f)
-        {
-            f.print("{\"log\":[]}");
-            f.close();
-        }
-    }
-    if (!LittleFS.exists("/mydbg_watchdog.json"))
-    {
-        File f = LittleFS.open("/mydbg_watchdog.json", "w");
-        if (f)
-        {
-            f.print("{\"watchdogs\":[]}");
-            f.close();
-        }
-    }
-    // Hauptseite (HTML-Seite anzeigen)
-    MYDBG_server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-                    { request->send(200, "text/html", MYDBG_HTML_PAGE); });
-
-    // Logdatei ausgeben (richtiger Pfad: /mydbg_data.json)
-    MYDBG_server.on("/mydbg_data.json", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        if (!LittleFS.exists("/mydbg_data.json")) {
-            request->send(404, "text/plain", "Logdatei mydbg_data.json nicht gefunden/exists");
-            return;
-        }
-        File file = LittleFS.open("/mydbg_data.json", "r");
-        request->send(file, "/mydbg_data.json", "application/json", false);
-        file.close(); });
-
-    // Watchdogdatei ausgeben (richtiger Pfad: /mydbg_watchdog.json)
-    MYDBG_server.on("/mydbg_watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        if (!LittleFS.exists("/mydbg_watchdog.json")) {
-            request->send(404, "text/plain", "Watchdogdatei mydbg_watchdog.json nicht gefunden/exists");
-            return;
-        }
-        File file = LittleFS.open("/mydbg_watchdog.json", "r");
-        request->send(file, "/mydbg_watchdog.json", "application/json", false);
-        file.close(); });
-
-    // Logs löschen
-    MYDBG_server.on("/deleteLogs", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        deleteJsonLogs();
-        request->send(200, "text/plain", "Logs gelöscht"); });
-
-    // Protokoll AN
-    MYDBG_server.on("/enableProtocol", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        protokollAktiv = true;
-        request->send(200, "text/plain", "Protokoll AN"); });
-
-    // Protokoll AUS
-    MYDBG_server.on("/disableProtocol", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        protokollAktiv = false;
-        request->send(200, "text/plain", "Protokoll AUS"); });
-
-    // Protokoll-Status (für Status-Anzeige beim Seitenladen)
-    MYDBG_server.on("/getProtocolState", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-        String state = protokollAktiv ? "AN" : "AUS";
-        request->send(200, "text/plain", state); });
-
-    // WebSocket starten
-    MYDBG_server.addHandler(&MYDBG_ws);
-
-    // Server starten
+    MYDBG_server.on("/status.html", HTTP_GET, []()
+                    { MYDBG_server.send(200, "text/html", "<html><body><h1>MYDBG Web-Debug</h1><p>Live-Debug läuft...</p></body></html>"); });
     MYDBG_server.begin();
+    MYDBG_webClientActive = true;
+    Serial.println("[MYDBG] Webserver gestartet auf /status.html");
+    Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
 }
 
 // Zeitstempel (lokal oder [keine Zeit])
@@ -570,6 +312,26 @@ void displayJsonLogs()
     }
 }
 
+void deleteJsonLogs()
+{
+    if (LittleFS.exists("/mydbg_data.json"))
+    {
+        LittleFS.remove("/mydbg_data.json");
+        Serial.println("[MYDBG] /mydbg_data.json gelöscht.");
+    }
+    if (LittleFS.exists("/mydbg_watchdog.json"))
+    {
+        LittleFS.remove("/mydbg_watchdog.json");
+        Serial.println("[MYDBG] /mydbg_watchdog.json gelöscht.");
+    }
+    if (LittleFS.exists("/mydbg_status.json"))
+    {
+        LittleFS.remove("/mydbg_status.json");
+        Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
+    }
+    Serial.println("\aJSON-Dateien gelöscht!\a");
+}
+
 void processSerialInput()
 {
     unsigned long timeout = MYDBG_menuFirstCall ? 15000 : MYDBG_menuTimeout;
@@ -632,10 +394,7 @@ void processSerialInput()
         MYDBG_webDebugEnabled = true;
         MYDBG_startWebDebug();
 
-        Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/");
-        Serial.println("\n[MYDBG] Modus 4 Web-Debug Logdatei mydbg_data.json  aktiv: http://" + WiFi.localIP().toString() + "/mydbg_data.json");
-        Serial.println("\n[MYDBG] Modus 4 Web-Debug Watchdog mydbg_watchdog.json  aktiv: http://" + WiFi.localIP().toString() + "/mydbg_watchdog.json");
-
+        Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
         delay(3000);
     }
     else if (input == "5")
