@@ -37,6 +37,7 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
+void deleteJsonLogs();
 
 #define MYDBG(...) MYDBG_WRAPPER(__VA_ARGS__, MYDBG3, MYDBG2)(__VA_ARGS__)
 #define MYDBG_WRAPPER(_1, _2, _3, NAME, ...) NAME
@@ -62,13 +63,11 @@ inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
             unsigned long __t0 = millis();                                                                          \
             while (millis() - __t0 < ms)                                                                            \
             {                                                                                                       \
-                                                                    \
+                                                                                                                    \
                 delay(10);                                                                                          \
             }                                                                                                       \
         }                                                                                                           \
     } while (0)
-
-
 
 // Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile)
@@ -225,91 +224,169 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 // Web-Debug-Seite starten
 inline void MYDBG_startWebDebug()
 {
+    MYDBG_server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
+                    {
+    deleteJsonLogs(); // <- deine existierende Funktion zum Löschen benutzen
+    request->send(200, "text/plain", "Logdateien gelöscht.");
+    Serial.println("[MYDBG] Logdateien per Web-Button gelöscht."); });
+
     // HTTP-Handler für status.html
     MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", R"rawliteral(
-            <!DOCTYPE html>
-            <html lang="de">
-            <head>
-                <meta charset="UTF-8">
-                <title>MYDBG Web-Debug</title>
-                <style>
-                    body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 10px; }
-                    table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
-                    th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
-                    th { background: #222; position: sticky; top: 0; z-index: 2; } /* <--- NEU */
-                    tr:nth-child(even) { background: #000; }
-                    #status { margin-bottom: 10px; }
-                </style>
+            
+           <!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>MYDBG Web-Debug</title>
+    <style>
+        body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 0; }
+        #header { position: sticky; top: 0; background: #111; padding: 10px; z-index: 10; }
+        h1 { margin: 0; font-size: 24px; }
+        #controls { margin-top: 10px; }
+        button { background: #0f0; color: #111; border: none; padding: 5px 10px; margin-right: 10px; cursor: pointer; }
+        button:hover { background: #5f5; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
+        th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
+        th { background: #222; position: sticky; top: 100px; z-index: 5; }
+        tr:nth-child(even) { background: #000; }
+        #status { margin: 10px; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1 id="mainTitle">MYDBG WEB-Debug</h1>
+        <div id="controls">
+            <button id="toggleProtocolBtn">Protokoll AUS</button>
+            <button id="showJsonBtn">Logdatei anzeigen</button>
+            <button id="showWatchdogBtn">Watchdog-Logs anzeigen</button>
+            <button id="deleteLogsBtn">Logdateien löschen</button>
+        </div>
+        <div id="status">Verbindung wird aufgebaut...</div>
+    </div>
 
-            </head>
-            <body>
-                <h1>MYDBG Web-Debug</h1>
-                <div id="status">Verbindung wird aufgebaut...</div>
-                <table id="logTable">
-                    <thead>
-                        <tr>
-                            <th>Zeile</th>
-                            <th>Funktion</th>
-                            <th>Datum</th>
-                            <th>Millis</th>
-                            <th>Nachricht</th>
-                            <th>Variable</th>
-                            <th>Wert</th>
-                            <th>Watchdog</th>
-                            <th>ResetGrund</th>
-                        </tr>
-                    </thead>
+    <table id="logTable">
+        <thead>
+            <tr>
+                <th>Zeile</th>
+                <th>Funktion</th>
+                <th>Datum</th>
+                <th>Millis</th>
+                <th>Nachricht</th>
+                <th>Variable</th>
+                <th>Wert</th>
+                <th>Watchdog</th>
+                <th>ResetGrund</th>
+            </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+    </table>
 
-                    <tbody id="logBody"></tbody>
-                </table>
-                <script>
-                    let statusDiv = document.getElementById('status');
-                    let logBody = document.getElementById('logBody');
-                    let conn = new WebSocket('ws://' + location.host + '/ws');
-                    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv.";
-                    
-                    
-                    conn.onmessage = function(event) {
-                    let data = JSON.parse(event.data);
-                    let row = document.createElement('tr');
-                    row.innerHTML = 
-                        "<td>" + data.pgmZeile + "</td>" +
-                        "<td>" + data.pgmFunc + "</td>" +
-                        "<td>" + data.timestamp + "</td>" +
-                        "<td>" + (data.millis || "-") + "</td>" +
-                        "<td>" + data.msg + "</td>" +
-                        "<td>" + data.varName + "</td>" +
-                        "<td>" + data.varValue + "</td>" +
-                        "<td>" + (data.watchdog ? "JA" : "nein") + "</td>" +
-                        "<td>" + (data.resetReason !== undefined ? data.resetReason : "-") + "</td>";
-                    logBody.appendChild(row);
+    <script>
+        let statusDiv = document.getElementById('status');
+        let logBody = document.getElementById('logBody');
+        let mainTitle = document.getElementById('mainTitle');
+        let toggleBtn = document.getElementById('toggleProtocolBtn');
+        let protocolActive = true; // Start: Protokoll EIN
 
-                    window.scrollTo(0, document.body.scrollHeight);
-                };
+        let conn = new WebSocket('ws://' + location.host + '/ws');
+        conn.onopen = () => statusDiv.innerText = "Verbindung aktiv.";
+        conn.onmessage = function(event) {
+            if (!protocolActive) return; // Wenn Protokoll aus, dann nix anzeigen
+
+            let data = JSON.parse(event.data);
+            let row = document.createElement('tr');
+            row.innerHTML = 
+                "<td>" + data.pgmZeile + "</td>" +
+                "<td>" + data.pgmFunc + "</td>" +
+                "<td>" + data.timestamp + "</td>" +
+                "<td>" + (data.millis || "-") + "</td>" +
+                "<td>" + data.msg + "</td>" +
+                "<td>" + data.varName + "</td>" +
+                "<td>" + data.varValue + "</td>" +
+                "<td>" + (data.watchdog ? "JA" : "nein") + "</td>" +
+                "<td>" + (data.resetReason !== undefined ? data.resetReason : "-") + "</td>";
+            logBody.appendChild(row);
+
+            window.scrollTo(0, document.body.scrollHeight);
+        };
+        conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
+
+        // Button-Handler
+        toggleBtn.addEventListener('click', () => {
+            protocolActive = !protocolActive;
+            if (protocolActive) {
+                toggleBtn.textContent = "Protokoll AUS";
+                mainTitle.textContent = "MYDBG WEB-Debug";
+                mainTitle.style.color = "#0f0"; // grün
+                if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_EIN");
+            } else {
+                toggleBtn.textContent = "Protokoll EIN";
+                mainTitle.textContent = "MYDBG WEB-Debug Protokoll AUS";
+                mainTitle.style.color = "#f00"; // rot
+                if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
+            }
+    });    
+        document.getElementById('showJsonBtn').addEventListener('click', () => {
+        window.open('/mydbg_data.json', '_blank');
+    });
+        document.getElementById('showWatchdogBtn').addEventListener('click', () => {
+        window.open('/mydbg_watchdog.json', '_blank');
+    });
+    document.getElementById('deleteLogsBtn').addEventListener('click', () => {
+        if (confirm('Willst du wirklich alle Logdateien löschen?')) {
+            fetch('/delete_logs')
+                .then(response => response.text())
+                .then(text => {
+                alert(text);
+                // Tabelle leeren:
+                logBody.innerHTML = "";
+            })
+                .catch(error => alert('Fehler beim Löschen: ' + error));
+        }
+    });
+    </script>
+</body>
+</html>
 
 
 
-                    conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
-                </script>
-            </body>
-            </html>
         )rawliteral"); });
 
     // WebSocket Events
     MYDBG_ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
                         void *arg, uint8_t *data, size_t len)
                      {
-        if (type == WS_EVT_CONNECT)
-        {
-            Serial.println("[MYDBG] WebSocket verbunden");
-            MYDBG_webClientActive = true;
-        }
-        else if (type == WS_EVT_DISCONNECT)
-        {
-            Serial.println("[MYDBG] WebSocket getrennt");
-            MYDBG_webClientActive = false;
-        } });
+                         if (type == WS_EVT_CONNECT)
+                         {
+                             Serial.println("[MYDBG] WebSocket verbunden");
+                             MYDBG_webClientActive = true;
+                         }
+                         else if (type == WS_EVT_DISCONNECT)
+                         {
+                             Serial.println("[MYDBG] WebSocket getrennt");
+                             MYDBG_webClientActive = false;
+                         }
+                         else if (type == WS_EVT_DATA)
+                         {
+                             AwsFrameInfo *info = (AwsFrameInfo *)arg;
+                             if (info->final && info->index == 0 && info->len == len)
+                             {
+                                 String msg = String((char *)data).substring(0, len);
+                                 if (msg == "PROTOKOLL_AUS")
+                                 {
+                                     MYDBG_isEnabled = false;
+                                     MYDBG_stopEnabled = false;
+                                     Serial.println("[MYDBG] WebSocket-Befehl: Protokoll AUS empfangen.");
+                                 }
+                                 else if (msg == "PROTOKOLL_EIN")
+                                 {
+                                     MYDBG_isEnabled = true;
+                                     MYDBG_stopEnabled = true;
+                                     Serial.println("[MYDBG] WebSocket-Befehl: Protokoll EIN empfangen.");
+                                 }
+                             }
+                         } });
 
     MYDBG_server.addHandler(&MYDBG_ws);
     MYDBG_server.begin();
