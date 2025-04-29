@@ -13,6 +13,9 @@
 #define MYDBG_MAX_LOGFILES 3
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
+// Automatische Initialisierung aktivieren/deaktivieren
+// Wenn gesetzt, wird KEINE automatische Initialisierung gemacht
+// #define MYDBG_NO_AUTOINIT
 
 inline bool MYDBG_timeInitDone = false;
 inline bool MYDBG_isEnabled = true;
@@ -38,6 +41,28 @@ inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 void deleteJsonLogs();
+inline void MYDBG_autoInit()
+{
+#ifndef MYDBG_NO_AUTOINIT
+    static bool alreadyInitialized = false; // Schutz: Nur einmal melden
+
+    if (!MYDBG_filesystemReady)
+        MYDBG_initFilesystem();
+    if (!MYDBG_timeInitDone)
+        MYDBG_initTime();
+    if (!MYDBG_webDebugEnabled)
+    {
+        MYDBG_startWebDebug();
+        MYDBG_webDebugEnabled = true;
+    }
+
+    if (!alreadyInitialized)
+    {
+        Serial.println("[MYDBG] Automatische Initialisierung: Filesystem + Zeit + Webserver gestartet.");
+        alreadyInitialized = true;
+    }
+#endif
+}
 
 #define MYDBG(...) MYDBG_WRAPPER(__VA_ARGS__, MYDBG3, MYDBG2)(__VA_ARGS__)
 #define MYDBG_WRAPPER(_1, _2, _3, NAME, ...) NAME
@@ -47,6 +72,7 @@ void deleteJsonLogs();
 #define MYDBG_INTERNAL(waitIndex, msgText, varName, varValue)                                                       \
     do                                                                                                              \
     {                                                                                                               \
+        MYDBG_autoInit();                                                                                           \
         if (MYDBG_isEnabled && (!MYDBG_stopEnabled || waitIndex == 0))                                              \
         {                                                                                                           \
             Serial.println(String("[MYDBG] > ") + __LINE__ + " | " + msgText + " | " + varName + " = " + varValue); \
@@ -82,7 +108,20 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     doc["millis"] = millis();                              // NEU
     doc["resetReason"] = (int)esp_reset_reason();          // NEU
     doc["watchdog"] = (esp_reset_reason() == ESP_RST_WDT); // NEU
-
+    // Neu: Filesystem-Auslastung ergänzen
+    if (MYDBG_filesystemReady)
+    {
+        size_t total = LittleFS.totalBytes();
+        size_t used = LittleFS.usedBytes();
+        float freiProzent = 100.0 - (used * 100.0) / total;
+        doc["fs_free_kb"] = (total - used) / 1024;
+        doc["fs_free_percent"] = freiProzent;
+    }
+    else
+    {
+        doc["fs_free_kb"] = -1;
+        doc["fs_free_percent"] = -1;
+    }
     String jsonStr;
     serializeJson(doc, jsonStr);
     MYDBG_ws.textAll(jsonStr);
@@ -284,6 +323,9 @@ inline void MYDBG_startWebDebug()
 
     <script>
         let statusDiv = document.getElementById('status');
+        let fsInfoDiv = document.createElement('div');
+        fsInfoDiv.style.marginTop = "5px";
+        document.getElementById('header').appendChild(fsInfoDiv);
         let logBody = document.getElementById('logBody');
         let mainTitle = document.getElementById('mainTitle');
         let toggleBtn = document.getElementById('toggleProtocolBtn');
@@ -309,6 +351,10 @@ inline void MYDBG_startWebDebug()
             logBody.appendChild(row);
 
             window.scrollTo(0, document.body.scrollHeight);
+            if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
+                fsInfoDiv.innerText = "freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
+            }
+
         };
         conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
 
@@ -580,15 +626,28 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
 
     Serial.println();
     Serial.println(String("=== MYDBG Menü (aufgerufen in: ") + aufruferFunc + ") ===");
-    Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + STOP aktiv" : "  1 = Debug AUSGABE + STOP aktiv");
-    Serial.println(MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 2 = Nur Debug AUSGABE aktiv" : "  2 = Nur Debug AUSGABE aktiv");
-    Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + STOP AUS" : "  3 = Debug AUSGABE + STOP AUS");
-    Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
-    Serial.println(MYDBG_webDebugEnabled ? "  5 = Web-Debug beenden" : "x 5 = Web-Debug beenden");
-    Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
-    Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)");
-    processSerialInput(); // Eingabe verarbeiten
-}
+    if (MYDBG_filesystemReady)
+    {
+        size_t total = LittleFS.totalBytes();
+        size_t used = LittleFS.usedBytes();
+        Serial.printf("[MYDBG] Filesystem: %.2f kB verwendet von %.2f kB (%.1f%% belegt)\n",
+                      used / 1024.0, total / 1024.0, (used * 100.0) / total);
+    }
+    else
+    {
+        Serial.println("\n⚡[MYDBG] Achtung: Filesystem nicht bereit.\n");
+        
+    }
+
+        Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + STOP aktiv" : "  1 = Debug AUSGABE + STOP aktiv");
+        Serial.println(MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 2 = Nur Debug AUSGABE aktiv" : "  2 = Nur Debug AUSGABE aktiv");
+        Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + STOP AUS" : "  3 = Debug AUSGABE + STOP AUS");
+        Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
+        Serial.println(MYDBG_webDebugEnabled ? "  5 = Web-Debug beenden" : "x 5 = Web-Debug beenden");
+        Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
+        Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)");
+        processSerialInput(); // Eingabe verarbeiten
+    }
 
 #define MYDBG_MENUE() MYDBG_MENUE_IMPL(__FUNCTION__)
 
