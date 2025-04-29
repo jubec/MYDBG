@@ -68,11 +68,11 @@ inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
         }                                                                                                           \
     } while (0)
 
-// JSON-Nachricht per WebSocket senden
+
+
+// Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile)
 {
-    
-
     StaticJsonDocument<256> doc;
     doc["timestamp"] = MYDBG_getTimestamp();
     doc["pgmFunc"] = func;
@@ -80,17 +80,13 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     doc["msg"] = msg;
     doc["varName"] = varName;
     doc["varValue"] = varValue;
+    doc["millis"] = millis();                              // NEU
+    doc["resetReason"] = (int)esp_reset_reason();          // NEU
+    doc["watchdog"] = (esp_reset_reason() == ESP_RST_WDT); // NEU
 
     String jsonStr;
     serializeJson(doc, jsonStr);
-
     MYDBG_ws.textAll(jsonStr);
-}
-
-// Einfache Textzeile an WebClient senden
-inline void MYDBG_streamWebLine(const String &msg)
-{
-    
 }
 
 // LittleFS initialisieren
@@ -118,6 +114,13 @@ inline void MYDBG_stopAusgabe(const String &msg, const String &varName, const St
     String ausgabe = "[MYDBG] > " + String(zeile) + " | " + func + "() | " + MYDBG_getTimestamp() + " | " + millis() + " | " + msg + " | " + varName + " = " + varValue;
     Serial.println(ausgabe);
     MYDBG_streamWebLine(ausgabe);
+}
+inline void MYDBG_streamWebLine(const String &msg)
+{
+    if (MYDBG_webClientActive)
+    {
+        MYDBG_ws.textAll(msg);
+    }
 }
 
 // Log-Eintrag in JSON-Datei schreiben
@@ -234,10 +237,11 @@ inline void MYDBG_startWebDebug()
                     body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 10px; }
                     table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
                     th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
-                    th { background: #222; }
+                    th { background: #222; position: sticky; top: 0; z-index: 2; } /* <--- NEU */
                     tr:nth-child(even) { background: #000; }
                     #status { margin-bottom: 10px; }
                 </style>
+
             </head>
             <body>
                 <h1>MYDBG Web-Debug</h1>
@@ -245,9 +249,18 @@ inline void MYDBG_startWebDebug()
                 <table id="logTable">
                     <thead>
                         <tr>
-                            <th>Zeit</th><th>Funktion</th><th>Zeile</th><th>Nachricht</th><th>Variable</th><th>Wert</th>
+                            <th>Zeile</th>
+                            <th>Funktion</th>
+                            <th>Datum</th>
+                            <th>Millis</th>
+                            <th>Nachricht</th>
+                            <th>Variable</th>
+                            <th>Wert</th>
+                            <th>Watchdog</th>
+                            <th>ResetGrund</th>
                         </tr>
                     </thead>
+
                     <tbody id="logBody"></tbody>
                 </table>
                 <script>
@@ -255,21 +268,28 @@ inline void MYDBG_startWebDebug()
                     let logBody = document.getElementById('logBody');
                     let conn = new WebSocket('ws://' + location.host + '/ws');
                     conn.onopen = () => statusDiv.innerText = "Verbindung aktiv.";
+                    
+                    
                     conn.onmessage = function(event) {
-                        let data = JSON.parse(event.data);
-                        let row = document.createElement('tr');
-                        row.innerHTML = "<td>" + data.timestamp + "</td>" +
-                                        "<td>" + data.pgmFunc + "</td>" +
-                                        "<td>" + data.pgmZeile + "</td>" +
-                                        "<td>" + data.msg + "</td>" +
-                                        "<td>" + data.varName + "</td>" +
-                                        "<td>" + data.varValue + "</td>";
-                        logBody.appendChild(row);
-                        let spacer = document.createElement('tr');
-                        spacer.innerHTML = "<td colspan='6'>&nbsp;</td>";
-                        logBody.appendChild(spacer);
-                        window.scrollTo(0, document.body.scrollHeight);
-                    };
+                    let data = JSON.parse(event.data);
+                    let row = document.createElement('tr');
+                    row.innerHTML = 
+                        "<td>" + data.pgmZeile + "</td>" +
+                        "<td>" + data.pgmFunc + "</td>" +
+                        "<td>" + data.timestamp + "</td>" +
+                        "<td>" + (data.millis || "-") + "</td>" +
+                        "<td>" + data.msg + "</td>" +
+                        "<td>" + data.varName + "</td>" +
+                        "<td>" + data.varValue + "</td>" +
+                        "<td>" + (data.watchdog ? "JA" : "nein") + "</td>" +
+                        "<td>" + (data.resetReason !== undefined ? data.resetReason : "-") + "</td>";
+                    logBody.appendChild(row);
+
+                    window.scrollTo(0, document.body.scrollHeight);
+                };
+
+
+
                     conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
                 </script>
             </body>
