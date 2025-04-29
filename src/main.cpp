@@ -1,14 +1,23 @@
-// Datei: main.cpp – Beispiel für MYDBG Good-Case-Demo
+
+// Datei: main.cpp – Beispiel für MYDBG 
+// Beschreibung: Beispiel für die Verwendung der MYDBG-Bibliothek zur Ausgabe von Debug-Informationen und zur Überwachung des Programms.
+// Diese Datei enthält die Hauptlogik des Programms, einschließlich WLAN-Verbindung, Debug-Ausgaben und  Beispielanwendungen.
+// Die MYDBG-Bibliothek wird verwendet, um Debug-Informationen in der Konsole und über das Web bereitzustellen.
+// Die Datei enthält auch Beispiele für gute und schlechte Programmierpraktiken, um die Verwendung der MYDBG-Bibliothek zu demonstrieren.
+
+// Durch auskommentieren werdn bad-Funktionen nicht aufgerufen
+
 #include <Arduino.h>
-#include <WiFi.h>
-#include <time.h>
+#include <WiFi.h> // für WLAN
+#include <time.h> // für Zeitstempel
 #include "MYDBG.h" // Debug-Headerdatei
 #include "secrets.h" // enthält meine WLAN_SSID und WIFI_PASS
 
-// secrets.h enthält die WLAN-Zugangsdaten, wenn keine vorhanden ist  :
+// secrets.h enthält die WLAN-Zugangsdaten, wenn keine secrets.h vorhanden ist  :
 //const char *WIFI_SSID = "WLAN SSID";             // "WLAN SSID" eingeben
 //const char *WIFI_PASS = "WLAN Passwort";         // "WLAN Passwort" eingeben
 
+// Variable zur darstellung im Programm MYDBG
 int zyklus = 0;
 bool loopEnde = false;
 int z = 10; // Globale Variable
@@ -40,6 +49,7 @@ void good_Anzeige_Serial()
 {
   float temperatur = 23.7; // Beispielwert für Temperatur
   
+  // === Beispiel für "normale" Serial.println Ausgaben mit delay 2.Sek zum lesen ===
   Serial.println();
   Serial.println("=== Beispiel für normale Serial.println Ausgaben mit delay 2.Sek zum lesen===");
   Serial.print("Temperatur: ");
@@ -47,13 +57,18 @@ void good_Anzeige_Serial()
   Serial.println(" °C");
   Serial.println();
   delay(2000); // 2 Sekunden warten
-
+  
+  // === Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum Text lesen ===
   Serial.println("=== Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum lesen ===");
+  // === Kurzbeschreibung der ausgabe
   Serial.println("Beschreibung: Stop für 9Sek. Ausgabe:[MYDBG] > Zeilennummer | aufrufende Funktion() | Datum Uhrzeit | Laufzeit in millis | Text | Variable | Wert");
+  
+  //=== Ausgabe mit MYDBG
   MYDBG(9, "9 Sek. Anzeige: Temperaturwert anzeigen in C° ", temperatur); 
     
 }
-// good = Gute Funktion (stürtzt nicht ab ) zur Funktionsdarstellung von MYBDG
+// === good_= Gute Funktion (stürtzt nicht ab ) zur Funktionsdarstellung von MYBDG
+
 void good_Schritt1()
 {
   MYDBG(0, "In Schritt 1 nur Textausgabe um z.B einen Hilfstext aus zugeben"); // 0 Sekunden warten, keine Json-Ausgabe
@@ -91,43 +106,43 @@ void good_GesamtSchleife()
     return;
 }
 
+
+// === bad_ = Schlechte Funktion (stürtzt ab ) zur Funktionsdarstellung von MYBDG
+void bad_Watchdog()
+{
+  MYDBG(0, "Schlechte Funktion: Starte Endlosschleife zur Watchdog-Provo");
+  while (true)
+  {
+    // Kein delay, kein yield → blockiert CPU komplett
+    // Der Watchdog (TWDT) sollte nach ca. 5 Sekunden zuschlagen
+    volatile int x = millis(); // Dummy, damit Compiler nichts wegoptimiert
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
   delay(200);
   
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
-
-  if (!LittleFS.exists("/mydbg_data.json"))
-  {
-    File f = LittleFS.open("/mydbg_data.json", "w");
-    if (f)
-    {
-      f.println("{\"log\":[]}");
-      f.close();
-      Serial.println("[MYDBG] /mydbg_data.json wurde neu mit leeren Logs erstellt!");
-    }
-    else
-    {
-      Serial.println("[MYDBG] Fehler beim Erstellen von /mydbg_data.json!");
-    }
-  }
-
-  MYDBG_server.begin();
-  MYDBG_initTime(); // NTP-Zeit initialisieren wird im Main aufgefrufen wenn WLAN zur Verfügung steht
+  
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
   good_Anzeige_Serial();
-
   
 }
 
 void loop()
 {
-  MYDBG_MENUE();
+  MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
+ 
+  if (!loopEnde) // Schleife nur solange durchlaufen, wie loopEnde = false ist
+  {
+    good_GesamtSchleife();
+  }
+ 
   
-
-  good_GesamtSchleife(); // einmalige Schleife als Beispiel für die Verwendung von MYDBG
-  MYDBG(1, "globale Variable z einmal anzeigen ", z);
+ 
+ // bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
 }

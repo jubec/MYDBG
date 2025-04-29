@@ -330,9 +330,11 @@ inline void MYDBG_startWebDebug()
         let mainTitle = document.getElementById('mainTitle');
         let toggleBtn = document.getElementById('toggleProtocolBtn');
         let protocolActive = true; // Start: Protokoll EIN
-
+        if (location.protocol === 'https:') {
+            location.href = 'http://' + location.host + location.pathname;
+        }
         let conn = new WebSocket('ws://' + location.host + '/ws');
-        conn.onopen = () => statusDiv.innerText = "Verbindung aktiv.";
+        conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
         conn.onmessage = function(event) {
             if (!protocolActive) return; // Wenn Protokoll aus, dann nix anzeigen
 
@@ -352,7 +354,7 @@ inline void MYDBG_startWebDebug()
 
             window.scrollTo(0, document.body.scrollHeight);
             if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
-                fsInfoDiv.innerText = "freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
+                statusDiv.innerText = "Verbindung aktiv. Freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
             }
 
         };
@@ -437,8 +439,7 @@ inline void MYDBG_startWebDebug()
     MYDBG_server.addHandler(&MYDBG_ws);
     MYDBG_server.begin();
 
-    Serial.println("[MYDBG] Webserver + WebSocket gestartet auf /status.html");
-    Serial.println("\n[MYDBG] Zugriff: http://" + WiFi.localIP().toString() + "/status.html");
+    
 }
 
 // Zeitstempel (lokal oder [keine Zeit])
@@ -534,7 +535,7 @@ void processSerialInput()
     unsigned long timeout = MYDBG_menuFirstCall ? 15000 : MYDBG_menuTimeout;
     MYDBG_menuFirstCall = false;
 
-    Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: ", timeout / 1000);
+Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
     unsigned long startMillis = millis();
     String input = "";
 
@@ -555,11 +556,11 @@ void processSerialInput()
 
     if (input.length() == 0)
     {
-        Serial.println("[MYDBG] Kein Eintrag – Timeout abgelaufen.");
+        Serial.println("Kein Eintrag – Timeout abgelaufen.");
         return;
     }
 
-    Serial.println("Du hast eingegeben: " + input);
+    Serial.println("Du hast eingegeben: " + input + "\n ");
 
     // Eingabe verarbeiten
     if (input == "1")
@@ -630,12 +631,12 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
     {
         size_t total = LittleFS.totalBytes();
         size_t used = LittleFS.usedBytes();
-        Serial.printf("[MYDBG] Filesystem: %.2f kB verwendet von %.2f kB (%.1f%% belegt)\n",
+        Serial.printf("Filesystem: %.2f kB verwendet, von %.2f kB (%.1f%% belegt)\n",
                       used / 1024.0, total / 1024.0, (used * 100.0) / total);
     }
     else
     {
-        Serial.println("\n⚡[MYDBG] Achtung: Filesystem nicht bereit.\n");
+        Serial.println("\n⚡ Achtung: Filesystem nicht bereit.\n");
         
     }
 
@@ -645,7 +646,7 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
         Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
         Serial.println(MYDBG_webDebugEnabled ? "  5 = Web-Debug beenden" : "x 5 = Web-Debug beenden");
         Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
-        Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)");
+        Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)\n");
         processSerialInput(); // Eingabe verarbeiten
     }
 
