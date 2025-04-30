@@ -40,7 +40,6 @@ void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeout
   }
   else
   {
-    Serial.println("\nWLAN Verbindung fehlgeschlagen!\n");
     MYDBG(9, "WLAN fehlgeschlagen" WIFI_SSID);  //mit maximaler Wartezeit von 9 Sekunden
   }
 }
@@ -61,7 +60,7 @@ void good_Anzeige_Serial()
   // === Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum Text lesen ===
   Serial.println("=== Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum lesen ===");
   // === Kurzbeschreibung der ausgabe
-  Serial.println("Beschreibung: Stop für 9Sek. Ausgabe:[MYDBG] > Zeilennummer | aufrufende Funktion() | Datum Uhrzeit | Laufzeit in millis | Text | Variable | Wert");
+  Serial.println("=== Beschreibung: Stop für 9Sek. Ausgabe:[MYDBG] > Zeilennummer | aufrufende Funktion() | Datum Uhrzeit | Laufzeit in millis | Text | Variable | Wert");
   
   //=== Ausgabe mit MYDBG
   MYDBG(9, "9 Sek. Anzeige: Temperaturwert anzeigen in C° ", temperatur); 
