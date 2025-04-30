@@ -24,7 +24,7 @@ int z = 10; // Globale Variable
 
 void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeoutSek = 15)
 {
-  Serial.printf("Verbinde mit SSID: %s\n", ssid);
+  Serial.printf("WLAN verbinde mit SSID: %s\n", ssid);
   WiFi.begin(ssid, passwort);
   unsigned long t0 = millis();
 
@@ -40,7 +40,7 @@ void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeout
   }
   else
   {
-    Serial.println("\nVerbindung fehlgeschlagen.");
+    Serial.println("\nWLAN Verbindung fehlgeschlagen!\n");
     MYDBG(9, "WLAN fehlgeschlagen" WIFI_SSID);  //mit maximaler Wartezeit von 9 Sekunden
   }
 }
@@ -126,7 +126,7 @@ void setup()
   
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
   
-  MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
+ // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
   good_Anzeige_Serial();
   
@@ -134,7 +134,7 @@ void setup()
 
 void loop()
 {
-  MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
+ // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
  
   if (!loopEnde) // Schleife nur solange durchlaufen, wie loopEnde = false ist

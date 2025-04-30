@@ -18,6 +18,7 @@
 // #define MYDBG_NO_AUTOINIT
 
 inline bool MYDBG_timeInitDone = false;
+static bool MYDBG_warnedAboutTime = false;
 inline bool MYDBG_isEnabled = true;
 inline bool MYDBG_stopEnabled = true;
 inline bool MYDBG_webDebugEnabled = false;
@@ -445,13 +446,19 @@ inline void MYDBG_startWebDebug()
 // Zeitstempel (lokal oder [keine Zeit])
 inline String MYDBG_getTimestamp()
 {
-    time_t now;
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo))
+    time_t now = time(nullptr);
+    if (!MYDBG_timeInitDone || now < 1577836800)
     {
-        Serial.println("[MYDBG] Achtung: Zeit nicht synchronisiert!");
+        if (!MYDBG_warnedAboutTime)
+        {
+            Serial.println("[MYDBG] ⚠️  Keine Zeit verfügbar (kein WLAN oder NTP fehlgeschlagen).");
+            MYDBG_warnedAboutTime = true;
+        }
         return "[keine Zeit]";
     }
+
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
     char buf[30];
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
     return String(buf);
@@ -460,12 +467,24 @@ inline String MYDBG_getTimestamp()
 // Zeitsynchronisation starten
 inline void MYDBG_initTime(const char *ntpServer)
 {
-    configTime(0, 0, ntpServer);
-    Serial.println("NTP-Zeit initialisiert");
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        configTime(3600, 0, ntpServer); // Beispiel: UTC+1
+        delay(1000);                    // kurz warten
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo))
+        {
+            Serial.println("[MYDBG] ⏰ Zeit über NTP synchronisiert.");
+            MYDBG_timeInitDone = true;
+            return;
+        }
+    }
+    MYDBG_timeInitDone = false;
 }
-// Hilfsfunktionen für JSON-Logs
-void displayJsonLogs()
-{
+
+    // Hilfsfunktionen für JSON-Logs
+    void displayJsonLogs()
+    {
     File file = LittleFS.open("/mydbg_data.json", "r");
     if (file)
     {
