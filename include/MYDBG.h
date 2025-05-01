@@ -273,10 +273,36 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
     }
 }
 
+// JSON-Ausgabe der Logs über Webserver bereitstellen
+inline void MYDBG_addJsonRoutes(AsyncWebServer &server)
+{
+    server.on("/mydbg_data.json", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        if (LittleFS.exists("/mydbg_data.json"))
+        {
+            request->send(LittleFS, "/mydbg_data.json", "application/json");
+        }
+        else
+        {
+            request->send(404, "application/json", "{\"error\":\"Keine Logdatei gefunden\"}");
+        } });
+
+    server.on("/mydbg_watchdog.json", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        if (LittleFS.exists("/mydbg_watchdog.json"))
+        {
+            request->send(LittleFS, "/mydbg_watchdog.json", "application/json");
+        }
+        else
+        {
+            request->send(404, "application/json", "{\"error\":\"Keine Watchdog-Datei gefunden\"}");
+        } });
+}
+
 // Web-Debug-Seite starten
 inline void MYDBG_startWebDebug()
 {
-    
+    MYDBG_addJsonRoutes(MYDBG_server); // JSON-Routen für /mydbg_data.json und /mydbg_watchdog.json aktivieren
     // HTTP-Handler für status.html
     MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", R"rawliteral(
