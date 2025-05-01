@@ -5,7 +5,7 @@
 // Die MYDBG-Bibliothek wird verwendet, um Debug-Informationen in der Konsole und über das Web bereitzustellen.
 // Die Datei enthält auch Beispiele für gute und schlechte Programmierpraktiken, um die Verwendung der MYDBG-Bibliothek zu demonstrieren.
 
-// Durch auskommentieren werdn bad-Funktionen nicht aufgerufen
+// Durch auskommentieren im loop werden bad-Funktionen nicht aufgerufen
 
 #include <Arduino.h>
 #include <WiFi.h> // für WLAN
@@ -90,18 +90,17 @@ void good_Anzeige_Serial()
     
 }
 // === good_= Gute Funktion (stürtzt nicht ab ) zur Funktionsdarstellung von MYBDG
-
 void good_Schritt1()
 {
   MYDBG(0, "In Schritt 1 nur Textausgabe um z.B einen Hilfstext aus zugeben"); // 0 Sekunden warten, keine Json-Ausgabe
   // hier würde z.B. ProgrammCode stehen
-}
+}// Ende von good_Schritt1()
 
 void good_Schritt2()
 {
   int wert = 42;
   MYDBG(0, "In Schritt 2 Text mit Wert", wert); // 0 Sekunden warten, Variable , keine Json-Ausgabe
-}
+}// Ende von good_Schritt2()
 
 void good_Schritt3()
 {
@@ -113,7 +112,7 @@ void good_Schritt3()
     loopEnde = true; 
     MYDBG(0, "Ende des Duchlaufs", zyklus);
   }
-}
+}//Ende von good_Schritt3()
 
 void good_GesamtSchleife()
 {
@@ -126,7 +125,7 @@ void good_GesamtSchleife()
   loopEnde = false; // wenn hier neu auf "false" gesetzt wird, läuft Schleife 1,2,3 weiter. Ändern in "true" um Schleife zu stoppen
   if (loopEnde)
     return;
-}
+} // Ende von good_GesamtSchleife()
 
 
 // === bad_ = Schlechte Funktion (stürtzt ab ) zur Funktionsdarstellung von MYBDG
@@ -139,7 +138,7 @@ void bad_Watchdog()
     // Der Watchdog (TWDT) sollte nach ca. 5 Sekunden zuschlagen
     volatile int x = millis(); // Dummy, damit Compiler nichts wegoptimiert
   }
-}
+}// Ende von bad_Watchdog()
 
 void setup()
 {
@@ -152,13 +151,13 @@ void setup()
 
   good_Anzeige_Serial();
   
-}
+}// Ende von setup()
 
 void loop()
 {
   wlanVerbindungPruefenAlleXMin(2); // z. B. alle 2 Minuten
 
-  // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
+  MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
  
   if (!loopEnde) // Schleife nur solange durchlaufen, wie loopEnde = false ist
@@ -169,4 +168,4 @@ void loop()
   
  
  // bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
-}
+}// Ende von loop()

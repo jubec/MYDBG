@@ -42,26 +42,25 @@ inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 void deleteJsonLogs();
+
 inline void MYDBG_autoInit()
 {
 #ifndef MYDBG_NO_AUTOINIT
-    static bool alreadyInitialized = false; // Schutz: Nur einmal melden
+    static bool alreadyInitialized = false;
 
     if (!MYDBG_filesystemReady)
-        MYDBG_initFilesystem();
+        MYDBG_initFilesystem(); // Gibt nur bei Fehlern aus
+
     if (!MYDBG_timeInitDone)
-        MYDBG_initTime();
+        MYDBG_initTime(); // Gibt bereits bei Fehler selbstständig Warnung aus
+
     if (!MYDBG_webDebugEnabled)
     {
-        MYDBG_startWebDebug();
+        MYDBG_startWebDebug(); // Kein extra Log nötig
         MYDBG_webDebugEnabled = true;
     }
 
-    if (!alreadyInitialized)
-    {
-        Serial.println("[MYDBG] Automatische Initialisierung: Filesystem + Zeit + Webserver gestartet.");
-        alreadyInitialized = true;
-    }
+    alreadyInitialized = true; // stiller Erfolg
 #endif
 }
 
@@ -132,9 +131,9 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
 inline void MYDBG_initFilesystem()
 {
     if (!LittleFS.begin(true))
-        Serial.println("[MYDBG] Fehler beim Mounten von LittleFS!");
-    else
-        Serial.println("[MYDBG] LittleFS erfolgreich gemountet.");
+    {
+        Serial.println("[MYDBG] ⚠️ Fehler beim Mounten von LittleFS!");
+    }
     MYDBG_filesystemReady = true;
 }
 
@@ -264,12 +263,13 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 // Web-Debug-Seite starten
 inline void MYDBG_startWebDebug()
 {
+    /*
     MYDBG_server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
                     {
     deleteJsonLogs(); // <- deine existierende Funktion zum Löschen benutzen
     request->send(200, "text/plain", "Logdateien gelöscht.");
     Serial.println("[MYDBG] Logdateien per Web-Button gelöscht."); });
-
+    */
     // HTTP-Handler für status.html
     MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", R"rawliteral(
@@ -467,19 +467,31 @@ inline String MYDBG_getTimestamp()
 // Zeitsynchronisation starten
 inline void MYDBG_initTime(const char *ntpServer)
 {
-    if (WiFi.status() == WL_CONNECTED)
+    if (WiFi.status() != WL_CONNECTED)
     {
-        configTime(3600, 0, ntpServer); // Beispiel: UTC+1
-        delay(1000);                    // kurz warten
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo))
-        {
-            Serial.println("[MYDBG] ⏰ Zeit über NTP synchronisiert.");
-            MYDBG_timeInitDone = true;
-            return;
-        }
+        // Kein WLAN – keine Zeit möglich
+        return;
     }
-    MYDBG_timeInitDone = false;
+
+    configTime(3600, 0, ntpServer); // z. B. UTC+1
+    delay(1000);
+
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo))
+    {
+        if (!MYDBG_timeInitDone)
+        {
+            // Nur einmal melden – vorher war keine Zeit da
+            Serial.println("[MYDBG] ⏰ Zeit über NTP synchronisiert.");
+        }
+        MYDBG_timeInitDone = true;
+    }
+    else
+    {
+        // nur bei echtem Fehler
+        Serial.println("[MYDBG] ⚠️ Zeit konnte nicht per NTP bezogen werden.");
+        MYDBG_timeInitDone = false;
+    }
 }
 
     // Hilfsfunktionen für JSON-Logs
@@ -527,8 +539,9 @@ inline void MYDBG_initTime(const char *ntpServer)
     {
         Serial.println("[MYDBG] Keine Logdatei vorhanden.");
     }
-}
+}// Ende von displayJsonLogs()
 
+// Löschen der JSON-Logs
 void deleteJsonLogs()
 {
     if (LittleFS.exists("/mydbg_data.json"))
@@ -547,8 +560,10 @@ void deleteJsonLogs()
         Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
     }
     Serial.println("\aJSON-Dateien gelöscht!\a");
-}
+}// Ende von deleteJsonLogs()
 
+
+// Eingabe über Serial verarbeiten
 void processSerialInput()
 {
     unsigned long timeout = MYDBG_menuFirstCall ? 15000 : MYDBG_menuTimeout;
@@ -587,7 +602,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
         MYDBG_isEnabled = true;
         MYDBG_stopEnabled = true;
         MYDBG_setWatchdog(MYDBG_WDT_EXTENDED);
-        Serial.println("[MYDBG] Modus 1 gesetzt: Debug AUSGABE + STOP aktiv");
+        Serial.println("[MYDBG] Modus 1 gesetzt: Debug AUSGABE + wait aktiv");
     }
     else if (input == "2")
     {
@@ -601,7 +616,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
         MYDBG_isEnabled = false;
         MYDBG_stopEnabled = false;
         MYDBG_setWatchdog(MYDBG_WDT_EXTENDED);
-        Serial.println("[MYDBG] Modus 3 gesetzt: Debug AUSGABE + STOP AUS");
+        Serial.println("[MYDBG] Modus 3 gesetzt: Debug AUSGABE + wait AUS");
     }
     else if (input == "4")
     {
@@ -612,6 +627,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
         MYDBG_startWebDebug();
 
         Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
+        
         delay(3000);
     }
     else if (input == "5")
@@ -634,7 +650,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
     {
         Serial.println("[MYDBG] Ungültige Eingabe: " + input);
     }
-}
+}// Ende von processSerialInput()
 
 // Konsolenmenü für Debug-Einstellungen
 inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
@@ -659,15 +675,15 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
         
     }
 
-        Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + STOP aktiv" : "  1 = Debug AUSGABE + STOP aktiv");
+        Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + wait aktiv" : "  1 = Debug AUSGABE + wait aktiv");
         Serial.println(MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 2 = Nur Debug AUSGABE aktiv" : "  2 = Nur Debug AUSGABE aktiv");
-        Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + STOP AUS" : "  3 = Debug AUSGABE + STOP AUS");
+        Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + wait AUS" : "  3 = Debug AUSGABE + wait AUS");
         Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
         Serial.println(MYDBG_webDebugEnabled ? "  5 = Web-Debug beenden" : "x 5 = Web-Debug beenden");
         Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
         Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)\n");
         processSerialInput(); // Eingabe verarbeiten
-    }
+}
 
 #define MYDBG_MENUE() MYDBG_MENUE_IMPL(__FUNCTION__)
 
