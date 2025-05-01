@@ -13,9 +13,14 @@
 #define MYDBG_MAX_LOGFILES 3
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
+
 // Automatische Initialisierung aktivieren/deaktivieren
 // Wenn gesetzt, wird KEINE automatische Initialisierung gemacht
 // #define MYDBG_NO_AUTOINIT
+
+// Web-Debug nur bei Bedarf starten
+// Wenn aktiviert, wird der Webserver NICHT automatisch gestartet
+#define MYDBG_WEBDEBUG_NUR_MANUELL
 
 inline bool MYDBG_timeInitDone = false;
 static bool MYDBG_warnedAboutTime = false;
@@ -54,11 +59,13 @@ inline void MYDBG_autoInit()
     if (!MYDBG_timeInitDone)
         MYDBG_initTime(); // Gibt bereits bei Fehler selbstständig Warnung aus
 
+#ifndef MYDBG_WEBDEBUG_NUR_MANUELL
     if (!MYDBG_webDebugEnabled)
     {
-        MYDBG_startWebDebug(); // Kein extra Log nötig
+        MYDBG_startWebDebug();
         MYDBG_webDebugEnabled = true;
     }
+#endif
 
     alreadyInitialized = true; // stiller Erfolg
 #endif
@@ -439,8 +446,6 @@ inline void MYDBG_startWebDebug()
 
     MYDBG_server.addHandler(&MYDBG_ws);
     MYDBG_server.begin();
-
-    
 }
 
 // Zeitstempel (lokal oder [keine Zeit])
@@ -494,52 +499,50 @@ inline void MYDBG_initTime(const char *ntpServer)
     }
 }
 
-    // Hilfsfunktionen für JSON-Logs
-    void displayJsonLogs()
-    {
+// Hilfsfunktionen für JSON-Logs
+void displayJsonLogs()
+{
     File file = LittleFS.open("/mydbg_data.json", "r");
-    if (file)
-    {
-        Serial.println("\n=== Inhalt der JSON-Logdatei ===");
-        StaticJsonDocument<1024> doc;
-        DeserializationError error = deserializeJson(doc, file);
-        file.close();
-
-        if (error)
-        {
-            Serial.println("[MYDBG] Fehler beim Lesen der JSON-Datei.");
-            return;
-        }
-
-        JsonArray logArray = doc["log"].as<JsonArray>();
-        if (!logArray)
-        {
-            Serial.println("[MYDBG] Keine Logs gefunden.");
-            return;
-        }
-
-        for (JsonObject entry : logArray)
-        {
-            // Kompakte Ausgabe in einer Zeile
-            Serial.printf(
-                "Zeit: %s | Millis: %ld | Funktion: %s |  Nachricht: %s | Variable: %s = %s | Reset: %d\n",
-                "Zeit: %s | Millis: %ld | Funktion: %s |  Nachricht: %s | Variable: %s = %s | Reset: %d\n",
-                entry["timestamp"].as<const char *>(),
-                entry["millis"].as<long>(),
-                entry["pgmFunc"].as<const char *>(),
-                entry["pgmZeile"].as<int>(),
-                entry["msg"].as<const char *>(),
-                entry["varName"].as<const char *>(),
-                entry["varValue"].as<const char *>(),
-                entry["resetReason"].as<int>());
-        }
-        Serial.println("=== Ende der JSON-Logs ===\n");
-    }
-    else
+    if (!file)
     {
         Serial.println("[MYDBG] Keine Logdatei vorhanden.");
+        return;
     }
-}// Ende von displayJsonLogs()
+
+    StaticJsonDocument<1024> doc;
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+
+    if (error)
+    {
+        Serial.println("[MYDBG] Fehler beim Lesen der JSON-Datei.");
+        return;
+    }
+
+    if (!doc.containsKey("log") || !doc["log"].is<JsonArray>())
+    {
+        Serial.println("[MYDBG] Logdaten fehlen oder haben falsches Format.");
+        return;
+    }
+
+    JsonArray logArray = doc["log"].as<JsonArray>();
+
+    Serial.println("\n=== Inhalt der JSON-Logdatei ===");
+    for (JsonObject entry : logArray)
+    {
+        Serial.printf(
+            "Zeit: %s | Millis: %ld | Funktion: %s | Zeile: %d | Nachricht: %s | Variable: %s = %s | Reset: %d\n",
+            entry["timestamp"] | "[?]",
+            entry["millis"] | 0,
+            entry["pgmFunc"] | "?",
+            entry["pgmZeile"] | -1,
+            entry["msg"] | "?",
+            entry["varName"] | "-",
+            entry["varValue"] | "-",
+            entry["resetReason"] | -1);
+    }
+    Serial.println("=== Ende der JSON-Logs ===\n");
+}
 
 // Löschen der JSON-Logs
 void deleteJsonLogs()
@@ -560,8 +563,7 @@ void deleteJsonLogs()
         Serial.println("[MYDBG] /mydbg_status.json gelöscht.");
     }
     Serial.println("\aJSON-Dateien gelöscht!\a");
-}// Ende von deleteJsonLogs()
-
+} // Ende von deleteJsonLogs()
 
 // Eingabe über Serial verarbeiten
 void processSerialInput()
@@ -569,7 +571,7 @@ void processSerialInput()
     unsigned long timeout = MYDBG_menuFirstCall ? 15000 : MYDBG_menuTimeout;
     MYDBG_menuFirstCall = false;
 
-Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
+    Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
     unsigned long startMillis = millis();
     String input = "";
 
@@ -585,7 +587,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
             }
             input += c;
         }
-        delay(10); // Kurze Pause, um CPU-Last zu reduzieren
+        delay(10);
     }
 
     if (input.length() == 0)
@@ -594,9 +596,8 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
         return;
     }
 
-    Serial.println("Du hast eingegeben: " + input + "\n ");
+    Serial.println("Du hast eingegeben: " + input + "\n");
 
-    // Eingabe verarbeiten
     if (input == "1")
     {
         MYDBG_isEnabled = true;
@@ -620,25 +621,25 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
     }
     else if (input == "4")
     {
-        MYDBG_isEnabled = true;
-        MYDBG_stopEnabled = true;
-        MYDBG_setWatchdog(MYDBG_WDT_EXTENDED);
-        MYDBG_webDebugEnabled = true;
-        MYDBG_startWebDebug();
-
-        Serial.println("\n[MYDBG] Modus 4 Web-Debug aktiv: http://" + WiFi.localIP().toString() + "/status.html");
-        
-        delay(3000);
+        if (!MYDBG_webDebugEnabled)
+        {
+            MYDBG_webDebugEnabled = true;
+            MYDBG_startWebDebug();
+            Serial.println("[MYDBG] Modus 4: Web-Debug aktiviert: http://" + WiFi.localIP().toString() + "/status.html");
+        }
+        else
+        {
+            Serial.println("[MYDBG] Web-Debug ist bereits aktiv.");
+        }
     }
     else if (input == "5")
     {
         MYDBG_webDebugEnabled = false;
-        Serial.println("[MYDBG] Modus 5 gesetzt: Web-Debug beendet");
+        Serial.println("[MYDBG] Modus 5 gesetzt: Web-Debug deaktiviert (Standardzustand)");
     }
     else if (input == "6")
     {
         Serial.println("[MYDBG] Modus 6 gesetzt: JSON-Logs anzeigen (Serial-Ausgabe)");
-        // JSON-Logs anzeigen
         displayJsonLogs();
     }
     else if (input == "7")
@@ -650,7 +651,7 @@ Serial.printf("> Eingabe (%lus Timeout) Menue # + CRLF: \n", timeout / 1000);
     {
         Serial.println("[MYDBG] Ungültige Eingabe: " + input);
     }
-}// Ende von processSerialInput()
+}
 
 // Konsolenmenü für Debug-Einstellungen
 inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
@@ -672,17 +673,16 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
     else
     {
         Serial.println("\n⚡ Achtung: Filesystem nicht bereit.\n");
-        
     }
 
-        Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + wait aktiv" : "  1 = Debug AUSGABE + wait aktiv");
-        Serial.println(MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 2 = Nur Debug AUSGABE aktiv" : "  2 = Nur Debug AUSGABE aktiv");
-        Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + wait AUS" : "  3 = Debug AUSGABE + wait AUS");
-        Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
-        Serial.println(MYDBG_webDebugEnabled ? "  5 = Web-Debug beenden" : "x 5 = Web-Debug beenden");
-        Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
-        Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)\n");
-        processSerialInput(); // Eingabe verarbeiten
+    Serial.println(MYDBG_isEnabled && MYDBG_stopEnabled ? "x 1 = Debug AUSGABE + wait aktiv" : "  1 = Debug AUSGABE + wait aktiv");
+    Serial.println(MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 2 = Nur Debug AUSGABE aktiv" : "  2 = Nur Debug AUSGABE aktiv");
+    Serial.println(!MYDBG_isEnabled && !MYDBG_stopEnabled ? "x 3 = Debug AUSGABE + wait AUS" : "  3 = Debug AUSGABE + wait AUS");
+    Serial.println(MYDBG_webDebugEnabled ? "x 4 = Web-Debug anzeigen (status.html)" : "  4 = Web-Debug anzeigen (status.html)");
+    Serial.println(!MYDBG_webDebugEnabled ? "x 5 = Web-Debug beenden (Standard)" : "  5 = Web-Debug beenden (Standard)");
+    Serial.println("  6 = JSON-Logs anzeigen (Serial-Ausgabe)");
+    Serial.println("  7 = Alle JSON-Logs löschen (Filesystem)\n");
+    processSerialInput(); // Eingabe verarbeiten
 }
 
 #define MYDBG_MENUE() MYDBG_MENUE_IMPL(__FUNCTION__)
