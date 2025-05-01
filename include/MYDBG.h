@@ -502,46 +502,78 @@ inline void MYDBG_initTime(const char *ntpServer)
 // Hilfsfunktionen für JSON-Logs
 void displayJsonLogs()
 {
+    // Normaler JSON-Log
     File file = LittleFS.open("/mydbg_data.json", "r");
-    if (!file)
+    Serial.println("[MYDBG] Hinweis: Standardmäßig werden nur die letzten " + String(MYDBG_MAX_LOGFILES) + " Logeinträge gespeichert.");
+    if (file)
     {
-        Serial.println("[MYDBG] Keine Logdatei vorhanden.");
-        return;
+        Serial.println("\n=== Inhalt der JSON-Logdatei ===");
+        StaticJsonDocument<1024> doc;
+        DeserializationError error = deserializeJson(doc, file);
+        file.close();
+
+        if (!error && doc["log"].is<JsonArray>())
+        {
+            JsonArray logArray = doc["log"].as<JsonArray>();
+            for (JsonObject entry : logArray)
+            {
+                Serial.printf(
+                    "Zeit: %s | Millis: %ld | Funktion: %s | Zeile: %d | Nachricht: %s | Variable: %s = %s | Reset: %d\n",
+                    entry["timestamp"] | "[?]",
+                    entry["millis"] | 0L,
+                    entry["pgmFunc"] | "?",
+                    entry["pgmZeile"] | -1,
+                    entry["msg"] | "?",
+                    entry["varName"] | "-",
+                    entry["varValue"] | "-",
+                    entry["resetReason"] | -1);
+            }
+        }
+        else
+        {
+            Serial.println("[MYDBG] Keine gültigen Logeinträge gefunden.");
+        }
+        Serial.println("=== Ende der JSON-Logdatei ===\n");
+    }
+    else
+    {
+        Serial.println("\n[MYDBG] Keine mydbg_data.json gefunden.\n");
     }
 
-    StaticJsonDocument<1024> doc;
-    DeserializationError error = deserializeJson(doc, file);
-    file.close();
-
-    if (error)
+    // Watchdog-Logs anzeigen
+    File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
+    if (wdFile)
     {
-        Serial.println("[MYDBG] Fehler beim Lesen der JSON-Datei.");
-        return;
+        Serial.println("\n=== Inhalt der Watchdog-Logdatei ===");
+        StaticJsonDocument<1024> wdDoc;
+        DeserializationError error = deserializeJson(wdDoc, wdFile);
+        wdFile.close();
+
+        if (!error && wdDoc["watchdogs"].is<JsonArray>())
+        {
+            JsonArray arr = wdDoc["watchdogs"].as<JsonArray>();
+            for (JsonObject w : arr)
+            {
+                Serial.printf("Zeit: %s | Funktion: %s | Zeile: %d | Grund: %d | Variable: %s = %s\n",
+                              w["timestamp"] | "[?]",
+                              w["func"] | "?",
+                              w["line"] | -1,
+                              w["reason"] | -1,
+                              w["var"] | "-",
+                              w["val"] | "-");
+            }
+        }
+        else
+        {
+            Serial.println("[MYDBG] Keine gültigen Watchdog-Einträge gefunden.\n");
+        }
+    }
+    else
+    {
+        Serial.println("[MYDBG] Keine mydbg_watchdog.json gefunden.\n");
     }
 
-    if (!doc.containsKey("log") || !doc["log"].is<JsonArray>())
-    {
-        Serial.println("[MYDBG] Logdaten fehlen oder haben falsches Format.");
-        return;
-    }
-
-    JsonArray logArray = doc["log"].as<JsonArray>();
-
-    Serial.println("\n=== Inhalt der JSON-Logdatei ===");
-    for (JsonObject entry : logArray)
-    {
-        Serial.printf(
-            "Zeit: %s | Millis: %ld | Funktion: %s | Zeile: %d | Nachricht: %s | Variable: %s = %s | Reset: %d\n",
-            entry["timestamp"] | "[?]",
-            entry["millis"] | 0,
-            entry["pgmFunc"] | "?",
-            entry["pgmZeile"] | -1,
-            entry["msg"] | "?",
-            entry["varName"] | "-",
-            entry["varValue"] | "-",
-            entry["resetReason"] | -1);
-    }
-    Serial.println("=== Ende der JSON-Logs ===\n");
+    Serial.println("=== Ende aller Logs-Anzeigen ===\n");
 }
 
 // Löschen der JSON-Logs
