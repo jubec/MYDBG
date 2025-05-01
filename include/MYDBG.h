@@ -11,6 +11,7 @@
 #include <ArduinoJson.h>
 
 #define MYDBG_MAX_LOGFILES 3
+#define MYDBG_MAX_WATCHDOGS 10
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
 
@@ -160,6 +161,7 @@ inline void MYDBG_stopAusgabe(const String &msg, const String &varName, const St
     Serial.println(ausgabe);
     MYDBG_streamWebLine(ausgabe);
 }
+
 inline void MYDBG_streamWebLine(const String &msg)
 {
     if (MYDBG_webClientActive)
@@ -168,9 +170,9 @@ inline void MYDBG_streamWebLine(const String &msg)
     }
 }
 
+
 // Log-Eintrag in JSON-Datei schreiben
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
-
 {
     bool isWatchdogReset = (esp_reset_reason() == ESP_RST_WDT);
 
@@ -214,18 +216,22 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
 
     if (isWatchdogReset)
     {
-        StaticJsonDocument<512> wdDoc;
+        StaticJsonDocument<1024> wdDoc;
         File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
         if (wdFile)
         {
             deserializeJson(wdDoc, wdFile);
             wdFile.close();
         }
+
         JsonArray wdArr;
         if (!wdDoc["watchdogs"].is<JsonArray>())
             wdArr = wdDoc.createNestedArray("watchdogs");
         else
             wdArr = wdDoc["watchdogs"].as<JsonArray>();
+
+        while (wdArr.size() >= MYDBG_MAX_WATCHDOGS)
+            wdArr.remove(0);
 
         JsonObject w = wdArr.createNestedObject();
         w["timestamp"] = MYDBG_getTimestamp();
@@ -270,13 +276,7 @@ inline void MYDBG_writeStatusFile(const String &msg, const String &func, int lin
 // Web-Debug-Seite starten
 inline void MYDBG_startWebDebug()
 {
-    /*
-    MYDBG_server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
-                    {
-    deleteJsonLogs(); // <- deine existierende Funktion zum Löschen benutzen
-    request->send(200, "text/plain", "Logdateien gelöscht.");
-    Serial.println("[MYDBG] Logdateien per Web-Button gelöscht."); });
-    */
+    
     // HTTP-Handler für status.html
     MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", R"rawliteral(
@@ -504,7 +504,7 @@ void displayJsonLogs()
 {
     // Normaler JSON-Log
     File file = LittleFS.open("/mydbg_data.json", "r");
-    Serial.println("[MYDBG] Hinweis: Standardmäßig werden nur die letzten " + String(MYDBG_MAX_LOGFILES) + " Logeinträge gespeichert.");
+    Serial.println("\n[MYDBG] Hinweis: Standardmäßig werden nur die letzten " + String(MYDBG_MAX_LOGFILES) + " Logeinträge gespeichert.");
     if (file)
     {
         Serial.println("\n=== Inhalt der JSON-Logdatei ===");
@@ -542,6 +542,7 @@ void displayJsonLogs()
 
     // Watchdog-Logs anzeigen
     File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
+    Serial.println("\n[MYDBG] Hinweis: Standardmäßig werden nur die letzten " + String(MYDBG_MAX_WATCHDOGS) + " Watchdogeinträge gespeichert.");
     if (wdFile)
     {
         Serial.println("\n=== Inhalt der Watchdog-Logdatei ===");
