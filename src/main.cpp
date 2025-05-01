@@ -43,6 +43,29 @@ void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeout
     MYDBG(9, "WLAN fehlgeschlagen" WIFI_SSID);  //mit maximaler Wartezeit von 9 Sekunden
   }
 }
+// WLAN regelmäßig prüfen (alle X Minuten), und ggf. erneut verbinden
+void wlanVerbindungPruefenAlleXMin(unsigned int minuten = 5)
+{
+  static unsigned long letztePruefung = 0;
+  unsigned long intervall = minuten * 60 * 1000UL;
+  unsigned long jetzt = millis();
+
+  // absichern gegen Überlauf
+  if (jetzt - letztePruefung >= intervall || jetzt < letztePruefung)
+  {
+    letztePruefung = jetzt;
+
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      MYDBG(1, "WLAN getrennt – versuche erneut zu verbinden");
+      connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS);
+    }
+    else
+    {
+      MYDBG(0, "WLAN-Verbindung OK");
+    }
+  }
+}
 
 void good_Anzeige_Serial()
 {
@@ -133,7 +156,9 @@ void setup()
 
 void loop()
 {
- // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
+  wlanVerbindungPruefenAlleXMin(2); // z. B. alle 2 Minuten
+
+  // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
  
   if (!loopEnde) // Schleife nur solange durchlaufen, wie loopEnde = false ist

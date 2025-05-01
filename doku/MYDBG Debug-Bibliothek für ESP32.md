@@ -1,4 +1,3 @@
-# MYDBG
 ## 🧩 MYDBG Debug-Bibliothek für ESP32
 
 ### 📄 Überblick
