@@ -1,0 +1,114 @@
+// Watdog test
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
+#include <esp_task_wdt.h>
+#include <esp_system.h>
+#include "secrets.h"
+
+// WLAN-Zugangsdaten (anpassen!)
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASS;
+
+// Webserver auf Port 80
+AsyncWebServer server(80);
+
+// Watchdog-Timeout in Sekunden
+#define WDT_TIMEOUT 5
+
+bool haengerAktiv = false;
+int schleifenZaehler = 0;
+
+// Fehlerlog speichern
+void speichereFehlerLog(String grund)
+{
+  if (!LittleFS.begin(true))
+  {
+    Serial.println("LittleFS konnte nicht gestartet werden.");
+    return;
+  }
+  File file = LittleFS.open("/watchdog_log.txt", "w");
+  if (!file)
+  {
+    Serial.println("Fehler beim Öffnen der Datei");
+    return;
+  }
+  file.println("FEHLERLOG (Watchdog)");
+  file.println("Grund: " + grund);
+  file.println("Millis: " + String(millis()));
+  file.close();
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  delay(1000);
+
+  // Resetgrund abfragen
+  esp_reset_reason_t reason = esp_reset_reason();
+
+  Serial.print("Letzter Resetgrund: ");
+  Serial.println(reason);
+
+  if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT)
+  {
+    Serial.println("==> Watchdog hat zuvor ausgelöst!");
+    speichereFehlerLog("Watchdog-Reset im vorherigen Durchlauf");
+  }
+
+  // WLAN verbinden
+  WiFi.begin(ssid, password);
+  Serial.print("Verbinde mit WLAN");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWLAN verbunden!");
+  Serial.println(WiFi.localIP());
+
+  // Webserver: Root
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+    String html = "<h2>ESP32 Watchdog-Test</h2>";
+    html += "<p><a href='/log'>Fehlerlog anzeigen</a></p>";
+    html += "<p>Resetgrund: " + String(esp_reset_reason()) + "</p>";
+    request->send(200, "text/html", html); });
+
+  // Webserver: Loganzeige
+  server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+    if (LittleFS.exists("/watchdog_log.txt")) {
+      request->send(LittleFS, "/watchdog_log.txt", "text/plain");
+    } else {
+      request->send(200, "text/plain", "Keine Logdatei vorhanden.");
+    } });
+
+  server.begin();
+
+  // Watchdog starten
+  esp_task_wdt_init(WDT_TIMEOUT, true);
+  esp_task_wdt_add(NULL); // Überwacht loop()-Task
+}
+
+void loop()
+{
+  schleifenZaehler++;
+  Serial.print("Loop-Durchlauf: ");
+  Serial.println(schleifenZaehler);
+
+  // Nach 10 Durchläufen absichtlich blockieren
+  if (schleifenZaehler >= 10)
+  {
+    Serial.println("Simuliere Hänger - kein esp_task_wdt_reset() mehr!");
+    haengerAktiv = true;
+  }
+
+  if (!haengerAktiv)
+  {
+    esp_task_wdt_reset(); // Lebenszeichen für Watchdog
+  }
+
+  delay(1000);
+}
