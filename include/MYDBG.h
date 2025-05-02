@@ -10,7 +10,7 @@
 #include <esp_task_wdt.h>
 #include <ArduinoJson.h>
 
-#define MYDBG_MAX_LOGFILES 3
+#define MYDBG_MAX_LOGFILES 10
 #define MYDBG_MAX_WATCHDOGS 10
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
@@ -171,14 +171,13 @@ inline void MYDBG_streamWebLine(const String &msg)
 }
 
 // Log-Eintrag in JSON-Datei schreiben
-// Neue Version von MYDBG_logToJson() mit LIFO (neueste Einträge oben)
+// Neue Version von MYDBG_logToJson() mit sauberem LIFO und echten Objektkopien
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
 {
     bool isWatchdogReset = (esp_reset_reason() == ESP_RST_WDT || esp_reset_reason() == ESP_RST_TASK_WDT);
 
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<2048> doc;
 
-    // Vorhandene Datei lesen (wenn sie existiert)
     if (LittleFS.exists("/mydbg_data.json"))
     {
         File file = LittleFS.open("/mydbg_data.json", "r");
@@ -187,14 +186,17 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
             DeserializationError error = deserializeJson(doc, file);
             file.close();
             if (error)
-            {
-                doc.clear(); // Fehlerhafte Datei verwerfen
-            }
+                doc.clear();
         }
     }
 
-    // Neues Objekt für aktuellen Eintrag
-    StaticJsonDocument<512> newEntry;
+    JsonArray oldArr = doc["log"].is<JsonArray>() ? doc["log"].as<JsonArray>() : doc.createNestedArray("log");
+
+    // Neues Dokument vorbereiten
+    StaticJsonDocument<2048> newDoc;
+    JsonArray newArr = newDoc.createNestedArray("log");
+
+    JsonObject newEntry = newArr.createNestedObject();
     newEntry["timestamp"] = MYDBG_getTimestamp();
     newEntry["millis"] = millis();
     newEntry["pgmFunc"] = func;
@@ -206,49 +208,43 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
     newEntry["watchdog"] = isWatchdogReset;
     newEntry["watchdogStatus"] = isWatchdogReset ? "aktuell" : "---";
 
-    // Neues LIFO-Array erzeugen
-    JsonArray oldArr = doc["log"].is<JsonArray>() ? doc["log"].as<JsonArray>() : doc.createNestedArray("log");
-    JsonArray newArr;
-    doc.remove("log"); // alten Eintrag löschen
-    newArr = doc.createNestedArray("log");
-
-    // neuen Eintrag oben einfügen
-    newArr.add(newEntry.as<JsonObject>());
-
-    // alte Einträge übernehmen (max. n-1 weitere)
-    int max = MYDBG_MAX_LOGFILES - 1;
     for (JsonObject o : oldArr)
     {
-        if (max-- <= 0)
+        if (newArr.size() >= MYDBG_MAX_LOGFILES)
             break;
-        newArr.add(o);
+        JsonObject copy = newArr.createNestedObject();
+        for (JsonPair kv : o)
+        {
+            copy[kv.key()] = kv.value();
+        }
     }
 
     File out = LittleFS.open("/mydbg_data.json", "w");
     if (out)
     {
-        serializeJson(doc, out);
+        serializeJson(newDoc, out);
         out.close();
     }
 
-    // Optional: Watchdog-Log ebenfalls im LIFO-Stil aktualisieren
     if (isWatchdogReset)
     {
-        StaticJsonDocument<1024> wdDoc;
-        File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
-        if (wdFile)
+        StaticJsonDocument<2048> wdDoc;
+        if (LittleFS.exists("/mydbg_watchdog.json"))
         {
-            deserializeJson(wdDoc, wdFile);
-            wdFile.close();
+            File wdFile = LittleFS.open("/mydbg_watchdog.json", "r");
+            if (wdFile)
+            {
+                deserializeJson(wdDoc, wdFile);
+                wdFile.close();
+            }
         }
 
-        JsonArray oldWatchdogs = wdDoc["watchdogs"].is<JsonArray>() ? wdDoc["watchdogs"].as<JsonArray>() : wdDoc.createNestedArray("watchdogs");
-        JsonArray newWatchdogs;
-        wdDoc.remove("watchdogs");
-        newWatchdogs = wdDoc.createNestedArray("watchdogs");
+        JsonArray oldWD = wdDoc["watchdogs"].is<JsonArray>() ? wdDoc["watchdogs"].as<JsonArray>() : wdDoc.createNestedArray("watchdogs");
 
-        // Neues Watchdog-Objekt
-        JsonObject w = newWatchdogs.createNestedObject();
+        StaticJsonDocument<2048> newWDDoc;
+        JsonArray newWD = newWDDoc.createNestedArray("watchdogs");
+
+        JsonObject w = newWD.createNestedObject();
         w["timestamp"] = MYDBG_getTimestamp();
         w["msg"] = text;
         w["func"] = func;
@@ -258,19 +254,21 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
         w["reason"] = (int)esp_reset_reason();
         w["status"] = "aktuell";
 
-        // ältere Watchdogs (max n-1) übernehmen
-        int wdMax = MYDBG_MAX_WATCHDOGS - 1;
-        for (JsonObject o : oldWatchdogs)
+        for (JsonObject o : oldWD)
         {
-            if (wdMax-- <= 0)
+            if (newWD.size() >= MYDBG_MAX_WATCHDOGS)
                 break;
-            newWatchdogs.add(o);
+            JsonObject copy = newWD.createNestedObject();
+            for (JsonPair kv : o)
+            {
+                copy[kv.key()] = kv.value();
+            }
         }
 
         File wdOut = LittleFS.open("/mydbg_watchdog.json", "w");
         if (wdOut)
         {
-            serializeJson(wdDoc, wdOut);
+            serializeJson(newWDDoc, wdOut);
             wdOut.close();
         }
     }
@@ -380,79 +378,94 @@ inline void MYDBG_startWebDebug()
         <tbody id="logBody"></tbody>
     </table>
 
-    <script>
-        let statusDiv = document.getElementById('status');
-        let fsInfoDiv = document.createElement('div');
-        fsInfoDiv.style.marginTop = "5px";
-        document.getElementById('header').appendChild(fsInfoDiv);
-        let logBody = document.getElementById('logBody');
-        let mainTitle = document.getElementById('mainTitle');
-        let toggleBtn = document.getElementById('toggleProtocolBtn');
-        let protocolActive = true; // Start: Protokoll EIN
-        if (location.protocol === 'https:') {
-            location.href = 'http://' + location.host + location.pathname;
-        }
-        let conn = new WebSocket('ws://' + location.host + '/ws');
-        conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
-        conn.onmessage = function(event) {
-            if (!protocolActive) return; // Wenn Protokoll aus, dann nix anzeigen
+<script>
+    let statusDiv = document.getElementById('status');
+    let fsInfoDiv = document.createElement('div');
+    fsInfoDiv.style.marginTop = "5px";
+    document.getElementById('header').appendChild(fsInfoDiv);
+    let logBody = document.getElementById('logBody');
+    let mainTitle = document.getElementById('mainTitle');
+    let toggleBtn = document.getElementById('toggleProtocolBtn');
+    let protocolActive = true;
 
-            let data = JSON.parse(event.data);
-            let row = document.createElement('tr');
-            row.innerHTML = 
-                "<td>" + data.pgmZeile + "</td>" +
-                "<td>" + data.pgmFunc + "</td>" +
-                "<td>" + data.timestamp + "</td>" +
-                "<td>" + (data.millis || "-") + "</td>" +
-                "<td>" + data.msg + "</td>" +
-                "<td>" + data.varName + "</td>" +
-                "<td>" + data.varValue + "</td>" +
-                "<td>" + (data.watchdog ? "JA" : "nein") + "</td>" +
-                "<td>" + (data.resetReason !== undefined ? data.resetReason : "-") + "</td>";
-            logBody.appendChild(row);
-
-            window.scrollTo(0, document.body.scrollHeight);
-            if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
-                statusDiv.innerText = "Verbindung aktiv. Freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
-            }
-
+    function interpretResetReason(code) {
+        const reasons = {
+            2: "ExtReset",
+            3: "SW-Reset",
+            4: "Panic",
+            5: "Int-WDT",
+            6: "Task-WDT",
+            7: "WDT",
+            8: "DeepSleep",
+            9: "Brownout",
+            10: "SDIO"
         };
-        conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
+        return reasons[code] || "";
+    }
 
-        // Button-Handler
-        toggleBtn.addEventListener('click', () => {
-            protocolActive = !protocolActive;
-            if (protocolActive) {
-                toggleBtn.textContent = "Protokoll AUS";
-                mainTitle.textContent = "MYDBG WEB-Debug";
-                mainTitle.style.color = "#0f0"; // grün
-                if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_EIN");
-            } else {
-                toggleBtn.textContent = "Protokoll EIN";
-                mainTitle.textContent = "MYDBG WEB-Debug Protokoll AUS";
-                mainTitle.style.color = "#f00"; // rot
-                if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
-            }
-    });    
-        document.getElementById('showJsonBtn').addEventListener('click', () => {
-        window.open('/mydbg_data.json', '_blank');
-    });
-        document.getElementById('showWatchdogBtn').addEventListener('click', () => {
-        window.open('/mydbg_watchdog.json', '_blank');
-    });
-    document.getElementById('deleteLogsBtn').addEventListener('click', () => {
-        if (confirm('Willst du wirklich alle Logdateien löschen?')) {
-            fetch('/delete_logs')
-                .then(response => response.text())
-                .then(text => {
-                alert(text);
-                // Tabelle leeren:
-                logBody.innerHTML = "";
-            })
-                .catch(error => alert('Fehler beim Löschen: ' + error));
+    if (location.protocol === 'https:') {
+        location.href = 'http://' + location.host + location.pathname;
+    }
+
+    let conn = new WebSocket('ws://' + location.host + '/ws');
+    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
+    conn.onmessage = function(event) {
+        if (!protocolActive) return;
+
+        let data = JSON.parse(event.data);
+        let row = document.createElement('tr');
+        row.innerHTML = 
+            "<td>" + data.pgmZeile + "</td>" +
+            "<td>" + data.pgmFunc + "</td>" +
+            "<td>" + data.timestamp + "</td>" +
+            "<td>" + (data.millis || "-") + "</td>" +
+            "<td>" + data.msg + "</td>" +
+            "<td>" + data.varName + "</td>" +
+            "<td>" + data.varValue + "</td>" +
+            "<td>" + (data.watchdog ? "<b style='color:red;'>WATCHDOG</b>" : "") + "</td>" +
+            "<td>" + (data.resetReason > 1 ? interpretResetReason(data.resetReason) : "") + "</td>";
+
+        logBody.insertBefore(row, logBody.firstChild);
+
+        window.scrollTo(0, document.body.scrollHeight);
+        if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
+            statusDiv.innerText = "Verbindung aktiv. Freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
         }
-    });
-    </script>
+    };
+document.getElementById('showJsonBtn').addEventListener('click', () => {
+    window.open('/mydbg_data.json', '_blank');
+});
+document.getElementById('showWatchdogBtn').addEventListener('click', () => {
+    window.open('/mydbg_watchdog.json', '_blank');
+});
+document.getElementById('deleteLogsBtn').addEventListener('click', () => {
+    if (confirm('Willst du wirklich alle Logdateien löschen?')) {
+        fetch('/delete_logs')
+            .then(response => response.text())
+            .then(text => {
+                alert(text);
+                logBody.innerHTML = ""; // Tabelle leeren
+            })
+            .catch(error => alert('Fehler beim Löschen: ' + error));
+    }
+});
+toggleBtn.addEventListener('click', () => {
+    protocolActive = !protocolActive;
+    if (protocolActive) {
+        toggleBtn.textContent = "Protokoll AUS";
+        mainTitle.textContent = "MYDBG WEB-Debug";
+        mainTitle.style.color = "#0f0"; // Grün
+        if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_EIN");
+    } else {
+        toggleBtn.textContent = "Protokoll EIN";
+        mainTitle.textContent = "MYDBG WEB-Debug Protokoll AUS";
+        mainTitle.style.color = "#f00"; // Rot
+        if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
+    }
+});
+    conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
+</script>
+
 </body>
 </html>
 

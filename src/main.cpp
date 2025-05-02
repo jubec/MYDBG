@@ -160,7 +160,7 @@ void setup()
 void loop()
 {
   wlanVerbindungPruefenAlleXMin(2); // z. B. alle 2 Minuten
-
+  Serial.printf("[MYDBG] MAX_LOGFILES = %d\n", MYDBG_MAX_LOGFILES);
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
  
