@@ -107,7 +107,7 @@ void good_Schritt3()
   MYDBG(9, "In Schritt 3, alles angezeigen, 9 Sek.stoppen und speichern", zyklus); // 9 Sekunden warten, Json-Ausgabe im WEB
 
   zyklus++;
-  if (zyklus >= 3)
+  if (zyklus >= 10)
   {
     loopEnde = true; 
     MYDBG(0, "Ende des Duchlaufs", zyklus);
@@ -131,6 +131,8 @@ void good_GesamtSchleife()
 // === bad_ = Schlechte Funktion (stürtzt ab ) zur Funktionsdarstellung von MYBDG
 void bad_Watchdog()
 {
+  if (zyklus<= 15){return;} // good Schritt3() hat zyklus auf 15 gesetzt, dann wird die Schleife nicht abgebrochen
+  
   // Vorher Watchdog kurz setzen (z. B. 5 Sekunden)
   MYDBG_setWatchdog(5);   
   Serial.println("[TEST] Watchdog auf 5 Sekunden gesetzt"); 
@@ -151,6 +153,7 @@ void setup()
   
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
   
+  
  // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
   good_Anzeige_Serial();
@@ -169,6 +172,6 @@ void loop()
     good_GesamtSchleife();
   }
   
-  bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
+  bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion 15x aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
 
 }// Ende von loop()

@@ -21,7 +21,7 @@
 
 // Web-Debug nur bei Bedarf starten
 // Wenn aktiviert, wird der Webserver NICHT automatisch gestartet
-#define MYDBG_WEBDEBUG_NUR_MANUELL
+//#define MYDBG_WEBDEBUG_NUR_MANUELL
 
 inline bool MYDBG_timeInitDone = false;
 static bool MYDBG_warnedAboutTime = false;
