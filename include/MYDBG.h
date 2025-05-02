@@ -170,50 +170,68 @@ inline void MYDBG_streamWebLine(const String &msg)
     }
 }
 
-
 // Log-Eintrag in JSON-Datei schreiben
+// Neue Version von MYDBG_logToJson() mit LIFO (neueste Einträge oben)
 inline void MYDBG_logToJson(const String &text, const String &func, int line, const String &varName, const String &varValue)
 {
-    bool isWatchdogReset = (esp_reset_reason() == ESP_RST_WDT);
+    bool isWatchdogReset = (esp_reset_reason() == ESP_RST_WDT || esp_reset_reason() == ESP_RST_TASK_WDT);
 
     StaticJsonDocument<1024> doc;
-    File file = LittleFS.open("/mydbg_data.json", "r");
-    if (file)
+
+    // Vorhandene Datei lesen (wenn sie existiert)
+    if (LittleFS.exists("/mydbg_data.json"))
     {
-        DeserializationError error = deserializeJson(doc, file);
-        file.close();
-        if (error)
-            doc.clear();
+        File file = LittleFS.open("/mydbg_data.json", "r");
+        if (file)
+        {
+            DeserializationError error = deserializeJson(doc, file);
+            file.close();
+            if (error)
+            {
+                doc.clear(); // Fehlerhafte Datei verwerfen
+            }
+        }
     }
 
-    JsonArray arr;
-    if (!doc["log"].is<JsonArray>())
-        arr = doc.createNestedArray("log");
-    else
-        arr = doc["log"].as<JsonArray>();
+    // Neues Objekt für aktuellen Eintrag
+    StaticJsonDocument<512> newEntry;
+    newEntry["timestamp"] = MYDBG_getTimestamp();
+    newEntry["millis"] = millis();
+    newEntry["pgmFunc"] = func;
+    newEntry["pgmZeile"] = line;
+    newEntry["msg"] = text;
+    newEntry["varName"] = varName;
+    newEntry["varValue"] = varValue;
+    newEntry["resetReason"] = (int)esp_reset_reason();
+    newEntry["watchdog"] = isWatchdogReset;
+    newEntry["watchdogStatus"] = isWatchdogReset ? "aktuell" : "---";
 
-    while (arr.size() >= MYDBG_MAX_LOGFILES)
-        arr.remove(0);
+    // Neues LIFO-Array erzeugen
+    JsonArray oldArr = doc["log"].is<JsonArray>() ? doc["log"].as<JsonArray>() : doc.createNestedArray("log");
+    JsonArray newArr;
+    doc.remove("log"); // alten Eintrag löschen
+    newArr = doc.createNestedArray("log");
 
-    JsonObject entry = arr.createNestedObject();
-    entry["timestamp"] = MYDBG_getTimestamp();
-    entry["millis"] = millis();
-    entry["pgmFunc"] = func;
-    entry["pgmZeile"] = line;
-    entry["msg"] = text;
-    entry["varName"] = varName;
-    entry["varValue"] = varValue;
-    entry["resetReason"] = (int)esp_reset_reason();
-    if (isWatchdogReset)
-        entry["watchdog"] = true;
+    // neuen Eintrag oben einfügen
+    newArr.add(newEntry.as<JsonObject>());
 
-    file = LittleFS.open("/mydbg_data.json", "w");
-    if (file)
+    // alte Einträge übernehmen (max. n-1 weitere)
+    int max = MYDBG_MAX_LOGFILES - 1;
+    for (JsonObject o : oldArr)
     {
-        serializeJson(doc, file);
-        file.close();
+        if (max-- <= 0)
+            break;
+        newArr.add(o);
     }
 
+    File out = LittleFS.open("/mydbg_data.json", "w");
+    if (out)
+    {
+        serializeJson(doc, out);
+        out.close();
+    }
+
+    // Optional: Watchdog-Log ebenfalls im LIFO-Stil aktualisieren
     if (isWatchdogReset)
     {
         StaticJsonDocument<1024> wdDoc;
@@ -224,16 +242,13 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
             wdFile.close();
         }
 
-        JsonArray wdArr;
-        if (!wdDoc["watchdogs"].is<JsonArray>())
-            wdArr = wdDoc.createNestedArray("watchdogs");
-        else
-            wdArr = wdDoc["watchdogs"].as<JsonArray>();
+        JsonArray oldWatchdogs = wdDoc["watchdogs"].is<JsonArray>() ? wdDoc["watchdogs"].as<JsonArray>() : wdDoc.createNestedArray("watchdogs");
+        JsonArray newWatchdogs;
+        wdDoc.remove("watchdogs");
+        newWatchdogs = wdDoc.createNestedArray("watchdogs");
 
-        while (wdArr.size() >= MYDBG_MAX_WATCHDOGS)
-            wdArr.remove(0);
-
-        JsonObject w = wdArr.createNestedObject();
+        // Neues Watchdog-Objekt
+        JsonObject w = newWatchdogs.createNestedObject();
         w["timestamp"] = MYDBG_getTimestamp();
         w["msg"] = text;
         w["func"] = func;
@@ -241,12 +256,22 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
         w["var"] = varName;
         w["val"] = varValue;
         w["reason"] = (int)esp_reset_reason();
+        w["status"] = "aktuell";
 
-        File out = LittleFS.open("/mydbg_watchdog.json", "w");
-        if (out)
+        // ältere Watchdogs (max n-1) übernehmen
+        int wdMax = MYDBG_MAX_WATCHDOGS - 1;
+        for (JsonObject o : oldWatchdogs)
         {
-            serializeJson(wdDoc, out);
-            out.close();
+            if (wdMax-- <= 0)
+                break;
+            newWatchdogs.add(o);
+        }
+
+        File wdOut = LittleFS.open("/mydbg_watchdog.json", "w");
+        if (wdOut)
+        {
+            serializeJson(wdDoc, wdOut);
+            wdOut.close();
         }
     }
 }
