@@ -169,6 +169,6 @@ void loop()
     good_GesamtSchleife();
   }
   
-  //bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
+  bad_Watchdog(); // Watchdog-Provo, wenn diese Funktion aufgerufen wird, stürzt das Programm ab und der Watchdog wird ausgelöst
 
 }// Ende von loop()

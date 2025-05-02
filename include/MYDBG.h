@@ -344,7 +344,7 @@ inline void MYDBG_startWebDebug()
         button:hover { background: #5f5; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
         th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
-        th { background: #222; position: sticky; top: 100px; z-index: 5; }
+        th { background: #003300;color: #ccffcc;font-weight: bold; position: sticky; top: 100px; z-index: 5; }
         tr:nth-child(even) { background: #000; }
         #status { margin: 10px; }
     </style>
@@ -427,7 +427,7 @@ inline void MYDBG_startWebDebug()
 
         logBody.insertBefore(row, logBody.firstChild);
 
-        window.scrollTo(0, document.body.scrollHeight);
+        
         if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
             statusDiv.innerText = "Verbindung aktiv. Freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
         }
