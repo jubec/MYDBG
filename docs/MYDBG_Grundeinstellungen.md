@@ -8,6 +8,88 @@
 
 Die Bibliothek `MYDBG.h` dient der strukturierten Debug-Ausgabe über serielle Schnittstelle und WebSocket. Sie stellt HTML-Statusseiten, Watchdog-Überwachung, Dateilogs über LittleFS und ein interaktives Konsolenmenü zur Verfügung.
 
+### Warum MYDBG sinnvoll ist
+
+Viele beginnen beim Debugging klassisch mit `Serial.print()` und `delay()`. Das reicht für einfache Tests, ist aber schnell unübersichtlich:
+
+* Welche Zeile hat den Fehler ausgelöst?
+* Welche Variable hatte welchen Wert?
+* Wann ist etwas passiert?
+* Wo befand sich das Programm im Ablauf?
+
+`MYDBG` liefert genau diese Informationen:
+
+* Zeilennummer und Funktionsname
+* Datum und Uhrzeit (wenn verfügbar)
+* Millis-Zeitstempel (auch ohne Uhr)
+* Aussagekräftige Nachricht
+* Name und Wert einer Variable
+
+Die Ausgaben erfolgen gleichzeitig:
+
+* **auf der seriellen Konsole**
+* **in der HTML-Webseite (`status.html`)**
+* **als JSON-Datei auf dem ESP-Dateisystem (LittleFS)**
+
+Das alles unterstützt dich dabei, komplexere Abläufe und Fehler zu verstehen – **auch ohne angeschlossene serielle Konsole**.
+
+Selbst wenn dein ESP „allein lebt“, kannst du per Webbrowser die gespeicherten JSON-Logs abrufen oder prüfen, ob ein Watchdog-Reset aufgetreten ist. Das Watchdog-Ereignis wird mit dem letzten gültigen `MYDBG(...)`-Eintrag angezeigt – kann aber zeitlich später erfolgt sein. Zusätzliche gezielte `MYDBG(...)`-Einträge helfen bei der Analyse des Ablaufes bis zum Absturz.
+
+Die optionale Wartezeit (`MYDBG(3, ...)`) hilft beim schrittweisen Verstehen – kann aber auch deaktiviert werden, um den Ablauf flüssig durchlaufen zu lassen.
+
+---
+
+## Beispielanwendung mit Watchdog-Fehler
+
+In der `main.cpp` kannst du eine kleine Anwendung bauen, die typische Debug-Ausgaben erzeugt und gezielt einen Watchdog-Fehler simuliert:
+
+```cpp
+void loop() {
+    static int zaehler = 0;
+    MYDBG(1, "Schleife gestartet", zaehler);
+
+    if (zaehler == 3) {
+        MYDBG(5, "Endlosschleife simulieren", zaehler);
+        while (true) {
+            // absichtlich kein delay und kein yield – Watchdog wird zuschlagen
+        }
+    }
+
+    delay(1000);
+    zaehler++;
+}
+```
+
+Diese kleine Testschleife:
+
+* gibt den Zählerstand aus
+* simuliert nach einigen Schleifen eine Endlosschleife
+* der Watchdog wird auslösen
+* das Ereignis wird als JSON-Eintrag gespeichert
+
+---
+
+## Tipps zur Integration in bestehende Projekte
+
+Während der Entwicklung kannst du `MYDBG(...)`-Befehle großzügig einsetzen. Doch im späteren Echtbetrieb solltest du gezielt nur an sinnvollen Stellen Debug-Ausgaben aktiv lassen:
+
+* Nutze `MYDBG(...)` bevorzugt an **Start- und Endpunkten von Funktionen**, um Aufrufe und Rückgaben zu beobachten.
+* **Zu viele Debug-Ausgaben stören** den Ablauf und belasten Flash und RAM. Daher solltest du ungenutzte Debug-Zeilen **auskommentieren**.
+
+### Praktischer Tipp:
+
+Benutze Suchen und Ersetzen, um Debug-Befehle temporär zu deaktivieren:
+
+```cpp
+MYDBG( → //MYDBG(
+```
+
+So kannst du sie jederzeit reaktivieren, ohne Code zu löschen.
+
+### Lebenszeichen für WLAN-Betrieb
+
+Ein `MYDBG(1, "Loop läuft")` im Hauptloop kann per WebSocket und JSON-Dateien zeigen, dass der ESP aktiv ist. Damit hast du eine Art „Pulsanzeige“ des Systems – sichtbar im Browser und speicherbar im Dateisystem.
+
 ---
 
 ## Grundeinstellungen (Konstanten und globale Flags)
