@@ -65,6 +65,9 @@ inline void MYDBG_autoInit()
     {
         MYDBG_startWebDebug();
         MYDBG_webDebugEnabled = true;
+        Serial.println("\a[MYDBG] Webserver http://" + WiFi.localIP().toString() + "/status.html");
+        Serial.println("\a[MYDBG] Statische Seite http://" + WiFi.localIP().toString() + "/mydbg_data.json");
+        Serial.println("\a[MYDBG] Statische Seite http://" + WiFi.localIP().toString() + "/mydbg_watchdog.json");
     }
 #endif
 

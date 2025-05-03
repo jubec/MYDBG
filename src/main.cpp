@@ -83,7 +83,7 @@ void good_Anzeige_Serial()
   // === Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum Text lesen ===
   Serial.println("=== Beispiel für MYDBG-Serial-Ausgaben mit Wartezeit 9Sek. zum lesen ===");
   // === Kurzbeschreibung der ausgabe
-  Serial.println("=== Beschreibung: Stop für 9Sek. Ausgabe:[MYDBG] > Zeilennummer | aufrufende Funktion() | Datum Uhrzeit | Laufzeit in millis | Text | Variable | Wert");
+  Serial.println("=== MYDBG: > Zeilennummer | aufrufende Funktion() | Datum Uhrzeit | Laufzeit in millis | Text | Variable | Wert");
   
   //=== Ausgabe mit MYDBG
   MYDBG(9, "9 Sek. Anzeige: Temperaturwert anzeigen in C° ", temperatur); 
@@ -150,19 +150,20 @@ void setup()
 {
   Serial.begin(115200);
   delay(200);
-  
+  Serial.println("\nSetup gestartet"); // Konsolausgabe 
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS); // WLAN verbinden wenn vorhanden
   
   
- // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
+ // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen kann auch hier aufgerufen werden
 
-  good_Anzeige_Serial();
+  good_Anzeige_Serial(); // Beispiel für gute Serial-Ausgabe wie mit Serial.println()
   
 }// Ende von setup()
 
 void loop()
 {
-  wlanVerbindungPruefenAlleXMin(2); // z. B. alle 2 Minuten
+  wlanVerbindungPruefenAlleXMin(2); // z. B. alle 2 Minuten um WLAN zu prüfen
+  
   Serial.printf("[MYDBG] MAX_LOGFILES = %d\n", MYDBG_MAX_LOGFILES);
   MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen
 
