@@ -15,6 +15,9 @@
 #define MYDBG_WDT_DEFAULT 10
 #define MYDBG_WDT_EXTENDED 300
 
+// Globale ResetGrund-Variable (nur einmal setzen)
+inline String MYDBG_resetGrundText = "";
+
 // Automatische Initialisierung aktivieren/deaktivieren
 // Wenn gesetzt, wird KEINE automatische Initialisierung gemacht
 // #define MYDBG_NO_AUTOINIT
@@ -59,6 +62,45 @@ inline void MYDBG_autoInit()
 
     if (!MYDBG_timeInitDone)
         MYDBG_initTime(); // Gibt bereits bei Fehler selbstständig Warnung aus
+
+    if (MYDBG_resetGrundText == "")
+    {
+        esp_reset_reason_t rsn = esp_reset_reason();
+        switch (rsn)
+        {
+        case ESP_RST_PANIC:
+            MYDBG_resetGrundText = "Panic";
+            break;
+        case ESP_RST_INT_WDT:
+            MYDBG_resetGrundText = "Int-WDT";
+            break;
+        case ESP_RST_TASK_WDT:
+            MYDBG_resetGrundText = "Task-WDT";
+            break;
+        case ESP_RST_WDT:
+            MYDBG_resetGrundText = "WDT";
+            break;
+        case ESP_RST_DEEPSLEEP:
+            MYDBG_resetGrundText = "DeepSleep";
+            break;
+        case ESP_RST_BROWNOUT:
+            MYDBG_resetGrundText = "Brownout";
+            break;
+        case ESP_RST_SDIO:
+            MYDBG_resetGrundText = "SDIO";
+            break;
+        case ESP_RST_SW:
+            MYDBG_resetGrundText = "SW-Reset";
+            break;
+        case ESP_RST_EXT:
+            MYDBG_resetGrundText = "ExtReset";
+            break;
+        // case ESP_RST_POWERON:   MYDBG_resetGrundText = "PowerOn"; break; // <– bewusst leer lassen oder später manuell setzen
+
+        default:
+            break;
+        }
+    }
 
 #ifndef MYDBG_WEBDEBUG_NUR_MANUELL
     if (!MYDBG_webDebugEnabled)
@@ -208,8 +250,8 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
     newEntry["varName"] = varName;
     newEntry["varValue"] = varValue;
     newEntry["resetReason"] = (int)esp_reset_reason();
-    newEntry["watchdog"] = isWatchdogReset;
-    newEntry["watchdogStatus"] = isWatchdogReset ? "aktuell" : "---";
+    newEntry["ResetGrund"] = MYDBG_resetGrundText;
+    MYDBG_resetGrundText = ""; // nur einmal ausgeben
 
     for (JsonObject o : oldArr)
     {
