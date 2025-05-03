@@ -24,7 +24,7 @@ inline String MYDBG_resetGrundText = "";
 
 // Web-Debug nur bei Bedarf starten
 // Wenn aktiviert, wird der Webserver NICHT automatisch gestartet
-//#define MYDBG_WEBDEBUG_NUR_MANUELL
+// #define MYDBG_WEBDEBUG_NUR_MANUELL
 
 inline bool MYDBG_timeInitDone = false;
 static bool MYDBG_warnedAboutTime = false;
@@ -51,6 +51,7 @@ inline void MYDBG_initFilesystem();
 inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 void deleteJsonLogs();
+inline void MYDBG_autoInitEchoLastLog();
 
 inline void MYDBG_autoInit()
 {
@@ -95,7 +96,7 @@ inline void MYDBG_autoInit()
         case ESP_RST_EXT:
             MYDBG_resetGrundText = "ExtReset";
             break;
-        // case ESP_RST_POWERON:   MYDBG_resetGrundText = "PowerOn"; break; // <– bewusst leer lassen oder später manuell setzen
+            // case ESP_RST_POWERON:   MYDBG_resetGrundText = "PowerOn"; break; // <– bewusst leer lassen oder später manuell setzen
 
         default:
             break;
@@ -113,7 +114,8 @@ inline void MYDBG_autoInit()
     }
 #endif
 
-    alreadyInitialized = true; // stiller Erfolg
+    alreadyInitialized = true;   // stiller Erfolg
+    MYDBG_autoInitEchoLastLog(); // letzte Logzeile bei Bedarf an WebSocket senden
 #endif
 }
 
@@ -147,6 +149,32 @@ inline void MYDBG_autoInit()
             }                                                                                                       \
         }                                                                                                           \
     } while (0)
+// Erweiterung in MYDBG_autoInit(): letzte Logzeile nach Neustart an WebSocket senden
+inline void MYDBG_autoInitEchoLastLog()
+{
+    if (MYDBG_resetGrundText != "" && LittleFS.exists("/mydbg_data.json"))
+    {
+        File file = LittleFS.open("/mydbg_data.json", "r");
+        if (file)
+        {
+            StaticJsonDocument<2048> doc;
+            DeserializationError error = deserializeJson(doc, file);
+            file.close();
+
+            if (!error && doc["log"].is<JsonArray>())
+            {
+                JsonArray arr = doc["log"].as<JsonArray>();
+                if (arr.size() > 0)
+                {
+                    JsonObject lastEntry = arr[0]; // LIFO – neuester Eintrag zuerst
+                    String jsonLine;
+                    serializeJson(lastEntry, jsonLine);
+                    MYDBG_ws.textAll(jsonLine);
+                }
+            }
+        }
+    }
+}
 
 // Einfache Textzeile an WebClient senden
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile)
@@ -250,8 +278,15 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
     newEntry["varName"] = varName;
     newEntry["varValue"] = varValue;
     newEntry["resetReason"] = (int)esp_reset_reason();
-    newEntry["ResetGrund"] = MYDBG_resetGrundText;
-    MYDBG_resetGrundText = ""; // nur einmal ausgeben
+    if (MYDBG_resetGrundText != "")
+    {
+        newEntry["ResetGrund"] = MYDBG_resetGrundText;
+        MYDBG_resetGrundText = "";
+    }
+    else
+    {
+        newEntry["ResetGrund"] = ""; // leerer Eintrag
+    }
 
     for (JsonObject o : oldArr)
     {
@@ -297,7 +332,15 @@ inline void MYDBG_logToJson(const String &text, const String &func, int line, co
         w["var"] = varName;
         w["val"] = varValue;
         w["reason"] = (int)esp_reset_reason();
-        w["status"] = "aktuell";
+        if (MYDBG_resetGrundText != "")
+        {
+            w["ResetGrund"] = MYDBG_resetGrundText;
+            MYDBG_resetGrundText = "";
+        }
+        else
+        {
+            w["ResetGrund"] = "";
+        }
 
         for (JsonObject o : oldWD)
         {
@@ -508,7 +551,22 @@ toggleBtn.addEventListener('click', () => {
         if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
     }
 });
-    conn.onclose = () => statusDiv.innerText = "Verbindung verloren.";
+
+
+
+
+   function reconnectWebSocket() {
+    conn = new WebSocket('ws://' + location.host + '/ws');
+    conn.onopen = () => statusDiv.innerText = "Verbindung wiederhergestellt.";
+    conn.onmessage = handleMessage;
+    conn.onclose = () => setTimeout(reconnectWebSocket, 3000);
+}
+
+conn.onclose = () => {
+    statusDiv.innerText = "Verbindung verloren. Reconnect läuft...";
+    setTimeout(reconnectWebSocket, 3000); // versuche alle 3 Sekunden neu
+};
+
 </script>
 
 </body>
