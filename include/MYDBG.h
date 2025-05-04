@@ -39,6 +39,47 @@ inline unsigned long MYDBG_menuTimeout = 5000;
 AsyncWebServer MYDBG_server(80); // Webserver auf Port 80
 AsyncWebSocket MYDBG_ws("/ws");  // WebSocket auf Pfad /ws
 
+// Visualisierung des Reset-Grundes im Buttontext (JavaScript Patch)
+// Diese Erweiterung wird direkt in status.html verwendet und reagiert auf "resetReason"
+// Beispiel: "12 Logdatei anzeigen" (rot), "5 Logdatei anzeigen" (orange), "1 Logdatei anzeigen" (grün)
+
+// PATCH IM BROWSER (status.html JavaScript)
+// Dies muss in den WebSocket-onmessage-Handler eingefügt werden:
+//
+// const resetCode = data.resetReason;
+// if (resetCode !== undefined) {
+//     const showJsonBtn = document.getElementById('showJsonBtn');
+//     const showWatchdogBtn = document.getElementById('showWatchdogBtn');
+//     if (showJsonBtn) {
+//         showJsonBtn.textContent = `${resetCode} Logdatei anzeigen`;
+//         if (resetCode === 1) {
+//             showJsonBtn.style.backgroundColor = '#0f0';
+//             showJsonBtn.style.color = '#000';
+//             showJsonBtn.style.fontWeight = 'normal';
+//         } else if ([3, 4, 5, 6, 9].includes(resetCode)) {
+//             showJsonBtn.style.backgroundColor = 'orange';
+//             showJsonBtn.style.color = '#fff';
+//             showJsonBtn.style.fontWeight = 'bold';
+//         } else if ([11, 12].includes(resetCode)) {
+//             showJsonBtn.style.backgroundColor = 'red';
+//             showJsonBtn.style.color = '#000';
+//             showJsonBtn.style.fontWeight = 'bold';
+//         }
+//     }
+//     if (showWatchdogBtn) {
+//         showWatchdogBtn.textContent = `${resetCode} Watchdog-Logs anzeigen`;
+//         if ([11, 12].includes(resetCode)) {
+//             showWatchdogBtn.style.backgroundColor = 'red';
+//             showWatchdogBtn.style.color = '#000';
+//             showWatchdogBtn.style.fontWeight = 'bold';
+//         } else {
+//             showWatchdogBtn.style.backgroundColor = '#0f0';
+//             showWatchdogBtn.style.color = '#000';
+//             showWatchdogBtn.style.fontWeight = 'normal';
+//         }
+//     }
+// }
+
 inline void MYDBG_streamWebLine(const String &msg);
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile);
 inline String MYDBG_getTimestamp();
