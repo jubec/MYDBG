@@ -204,7 +204,29 @@ inline void MYDBG_autoInit()
 // Erweiterung in MYDBG_autoInit(): letzte Logzeile nach Neustart an WebSocket senden
 inline void MYDBG_autoInitEchoLastLog()
 {
-    if (MYDBG_resetGrundText != "" && LittleFS.exists("/mydbg_data.json"))
+    // Nur wenn ein Resetgrund noch offen ist
+    if (MYDBG_resetGrundText != "")
+    {
+        StaticJsonDocument<256> infoDoc;
+        infoDoc["timestamp"] = MYDBG_getTimestamp();
+        infoDoc["msg"] = "Reset durch " + MYDBG_resetGrundText;
+        infoDoc["resetReason"] = (int)esp_reset_reason();
+        infoDoc["ResetGrund"] = MYDBG_resetGrundText;
+        infoDoc["pgmFunc"] = "";
+        infoDoc["pgmZeile"] = -1;
+        infoDoc["varName"] = "";
+        infoDoc["varValue"] = "";
+        infoDoc["millis"] = millis();
+
+        String infoStr;
+        serializeJson(infoDoc, infoStr);
+        MYDBG_ws.textAll(infoStr);
+
+        MYDBG_resetGrundText = ""; // ✅ Nur einmal ausgeben
+    }
+
+    // Danach die erste reguläre Logzeile schicken (wenn vorhanden)
+    if (LittleFS.exists("/mydbg_data.json"))
     {
         File file = LittleFS.open("/mydbg_data.json", "r");
         if (file)
@@ -499,7 +521,7 @@ inline void MYDBG_startWebDebug()
         button:hover { background: #5f5; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; word-wrap: break-word; }
         th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
-        th { background: #003300;color: #ccffcc;font-weight: bold; position: sticky; top: 100px; z-index: 5; }
+        th { background: #003300;color: #ccffcc;font-weight: bold; position: sticky; top: 160px; z-index: 5; }
         tr:nth-child(even) { background: #000; }
         #status, #resetGrund { margin: 10px; color: #ccc; }
     </style>
