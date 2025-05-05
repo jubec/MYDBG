@@ -485,7 +485,7 @@ inline void MYDBG_startWebDebug()
     MYDBG_server.on("/status.html", HTTP_GET, [](AsyncWebServerRequest *request)
                     { request->send(200, "text/html", R"rawliteral(
             
-           <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -501,7 +501,7 @@ inline void MYDBG_startWebDebug()
         th, td { border: 1px solid #0f0; padding: 5px; text-align: left; }
         th { background: #003300;color: #ccffcc;font-weight: bold; position: sticky; top: 100px; z-index: 5; }
         tr:nth-child(even) { background: #000; }
-        #status { margin: 10px; }
+        #status, #resetGrund { margin: 10px; color: #ccc; }
     </style>
 </head>
 <body>
@@ -514,8 +514,7 @@ inline void MYDBG_startWebDebug()
             <button id="deleteLogsBtn">Logdateien löschen</button>
         </div>
         <div id="status">Verbindung wird aufgebaut...</div>
-        <div id="resetGrund" style="margin:5px 10px; color:#ccc;">Letzter Reset: unbekannt</div>
-
+        <div id="resetGrund">Letzter Reset: unbekannt</div>
     </div>
 
     <table id="logTable">
@@ -528,7 +527,6 @@ inline void MYDBG_startWebDebug()
                 <th>Nachricht</th>
                 <th>Variable</th>
                 <th>Wert</th>
-               
             </tr>
         </thead>
         <tbody id="logBody"></tbody>
@@ -536,9 +534,7 @@ inline void MYDBG_startWebDebug()
 
 <script>
     let statusDiv = document.getElementById('status');
-    let fsInfoDiv = document.createElement('div');
-    fsInfoDiv.style.marginTop = "5px";
-    document.getElementById('header').appendChild(fsInfoDiv);
+    let resetDiv = document.getElementById('resetGrund');
     let logBody = document.getElementById('logBody');
     let mainTitle = document.getElementById('mainTitle');
     let toggleBtn = document.getElementById('toggleProtocolBtn');
@@ -546,6 +542,7 @@ inline void MYDBG_startWebDebug()
 
     function interpretResetReason(code) {
         const reasons = {
+            1: "PowerOn",
             2: "ExtReset",
             3: "SW-Reset",
             4: "Panic",
@@ -554,18 +551,18 @@ inline void MYDBG_startWebDebug()
             7: "WDT",
             8: "DeepSleep",
             9: "Brownout",
-            10: "SDIO"
+            10: "SDIO",
+            11: "RTC Watchdog",
+            12: "Unknown Reset"
         };
-        return reasons[code] || "";
+        return reasons[code] || "Unbekannt (" + code + ")";
     }
 
     if (location.protocol === 'https:') {
         location.href = 'http://' + location.host + location.pathname;
     }
 
-    let conn = new WebSocket('ws://' + location.host + '/ws');
-    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
-    conn.onmessage = function(event) {
+    function handleMessage(event) {
         if (!protocolActive) return;
 
         let data = JSON.parse(event.data);
@@ -577,62 +574,68 @@ inline void MYDBG_startWebDebug()
             "<td>" + (data.millis || "-") + "</td>" +
             "<td>" + data.msg + "</td>" +
             "<td>" + data.varName + "</td>" +
-            "<td>" + data.varValue + "</td>" ;
+            "<td>" + data.varValue + "</td>";
 
         logBody.insertBefore(row, logBody.firstChild);
 
-        
         if (data.fs_free_kb !== undefined && data.fs_free_percent !== undefined && data.fs_free_kb >= 0) {
             statusDiv.innerText = "Verbindung aktiv. Freier Speicher: " + data.fs_free_kb + " kB (" + data.fs_free_percent.toFixed(1) + "%)";
         }
-    };
-document.getElementById('showJsonBtn').addEventListener('click', () => {
-    window.open('/mydbg_data.json', '_blank');
-});
-document.getElementById('showWatchdogBtn').addEventListener('click', () => {
-    window.open('/mydbg_watchdog.json', '_blank');
-});
-document.getElementById('deleteLogsBtn').addEventListener('click', () => {
-    if (confirm('Willst du wirklich alle Logdateien löschen?')) {
-        fetch('/delete_logs')
-            .then(response => response.text())
-            .then(text => {
-                alert(text);
-                logBody.innerHTML = ""; // Tabelle leeren
-            })
-            .catch(error => alert('Fehler beim Löschen: ' + error));
+
+        if (data.resetReason !== undefined && data.resetReason > 0) {
+            const grundText = interpretResetReason(data.resetReason);
+            resetDiv.innerText = "Letzter Reset: " + grundText;
+        }
     }
-});
-toggleBtn.addEventListener('click', () => {
-    protocolActive = !protocolActive;
-    if (protocolActive) {
-        toggleBtn.textContent = "Protokoll AUS";
-        mainTitle.textContent = "MYDBG WEB-Debug";
-        mainTitle.style.color = "#0f0"; // Grün
-        if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_EIN");
-    } else {
-        toggleBtn.textContent = "Protokoll EIN";
-        mainTitle.textContent = "MYDBG WEB-Debug Protokoll AUS";
-        mainTitle.style.color = "#f00"; // Rot
-        if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
-    }
-});
 
-
-
-
-   function reconnectWebSocket() {
-    conn = new WebSocket('ws://' + location.host + '/ws');
-    conn.onopen = () => statusDiv.innerText = "Verbindung wiederhergestellt.";
+    let conn = new WebSocket('ws://' + location.host + '/ws');
+    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
     conn.onmessage = handleMessage;
-    conn.onclose = () => setTimeout(reconnectWebSocket, 3000);
-}
 
-conn.onclose = () => {
-    statusDiv.innerText = "Verbindung verloren. Reconnect läuft...";
-    setTimeout(reconnectWebSocket, 3000); // versuche alle 3 Sekunden neu
-};
+    document.getElementById('showJsonBtn').addEventListener('click', () => {
+        window.open('/mydbg_data.json', '_blank');
+    });
+    document.getElementById('showWatchdogBtn').addEventListener('click', () => {
+        window.open('/mydbg_watchdog.json', '_blank');
+    });
+    document.getElementById('deleteLogsBtn').addEventListener('click', () => {
+        if (confirm('Willst du wirklich alle Logdateien löschen?')) {
+            fetch('/delete_logs')
+                .then(response => response.text())
+                .then(text => {
+                    alert(text);
+                    logBody.innerHTML = "";
+                })
+                .catch(error => alert('Fehler beim Löschen: ' + error));
+        }
+    });
 
+    toggleBtn.addEventListener('click', () => {
+        protocolActive = !protocolActive;
+        if (protocolActive) {
+            toggleBtn.textContent = "Protokoll AUS";
+            mainTitle.textContent = "MYDBG WEB-Debug";
+            mainTitle.style.color = "#0f0";
+            if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_EIN");
+        } else {
+            toggleBtn.textContent = "Protokoll EIN";
+            mainTitle.textContent = "MYDBG WEB-Debug Protokoll AUS";
+            mainTitle.style.color = "#f00";
+            if (conn.readyState === WebSocket.OPEN) conn.send("PROTOKOLL_AUS");
+        }
+    });
+
+    function reconnectWebSocket() {
+        conn = new WebSocket('ws://' + location.host + '/ws');
+        conn.onopen = () => statusDiv.innerText = "Verbindung wiederhergestellt.";
+        conn.onmessage = handleMessage;
+        conn.onclose = () => setTimeout(reconnectWebSocket, 3000);
+    }
+
+    conn.onclose = () => {
+        statusDiv.innerText = "Verbindung verloren. Reconnect läuft...";
+        setTimeout(reconnectWebSocket, 3000);
+    };
 </script>
 
 </body>
