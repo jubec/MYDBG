@@ -35,6 +35,7 @@ inline bool MYDBG_webClientActive = false;
 inline bool MYDBG_filesystemReady = false;
 inline bool MYDBG_menuFirstCall = true;
 inline unsigned long MYDBG_menuTimeout = 5000;
+static bool MYDBG_resetGrundExported = false; // Nur einmal setzen (persistente
 
 AsyncWebServer MYDBG_server(80); // Webserver auf Port 80
 AsyncWebSocket MYDBG_ws("/ws");  // WebSocket auf Pfad /ws
@@ -79,6 +80,7 @@ AsyncWebSocket MYDBG_ws("/ws");  // WebSocket auf Pfad /ws
 //         }
 //     }
 // }
+// #include "MYDBG_rest.cpp"
 
 inline void MYDBG_streamWebLine(const String &msg);
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile);
@@ -105,7 +107,9 @@ inline void MYDBG_autoInit()
     if (!MYDBG_timeInitDone)
         MYDBG_initTime(); // Gibt bereits bei Fehler selbstständig Warnung aus
 
-    if (MYDBG_resetGrundText == "")
+   
+
+    if (MYDBG_resetGrundText == "" && !MYDBG_resetGrundExported)
     {
         esp_reset_reason_t rsn = esp_reset_reason();
         switch (rsn)
@@ -137,12 +141,19 @@ inline void MYDBG_autoInit()
         case ESP_RST_EXT:
             MYDBG_resetGrundText = "ExtReset";
             break;
-            // case ESP_RST_POWERON:   MYDBG_resetGrundText = "PowerOn"; break; // <– bewusst leer lassen oder später manuell setzen
-
+        case ESP_RST_POWERON:
+            MYDBG_resetGrundText = "PowerOn";
+            break;
         default:
             break;
         }
+
+        // Nur wenn tatsächlich etwas gesetzt wurde:
+        if (MYDBG_resetGrundText != "")
+            MYDBG_resetGrundExported = true;
     }
+
+    
 
 #ifndef MYDBG_WEBDEBUG_NUR_MANUELL
     if (!MYDBG_webDebugEnabled)
@@ -228,9 +239,20 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     doc["varName"] = varName;
     doc["varValue"] = varValue;
     doc["millis"] = millis();                              // NEU
-    doc["resetReason"] = (int)esp_reset_reason();          // NEU
-    doc["watchdog"] = (esp_reset_reason() == ESP_RST_WDT); // NEU
-    // Neu: Filesystem-Auslastung ergänzen
+    if (MYDBG_resetGrundText != "")
+    {
+        doc["resetReason"] = (int)esp_reset_reason();
+        doc["watchdog"] = (esp_reset_reason() == ESP_RST_WDT || esp_reset_reason() == ESP_RST_TASK_WDT);
+        doc["ResetGrund"] = MYDBG_resetGrundText;
+        MYDBG_resetGrundText = ""; // ✅ nur ein einziges Mal
+    }
+    else
+    {
+        doc["resetReason"] = 0;
+        doc["watchdog"] = false;
+        doc["ResetGrund"] = "";
+    }
+
     if (MYDBG_filesystemReady)
     {
         size_t total = LittleFS.totalBytes();
@@ -449,6 +471,10 @@ inline void MYDBG_addJsonRoutes(AsyncWebServer &server)
         {
             request->send(404, "application/json", "{\"error\":\"Keine Watchdog-Datei gefunden\"}");
         } });
+    server.on("/delete_logs", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        deleteJsonLogs(); // deine bestehende Funktion
+        request->send(200, "text/plain", "Logdateien wurden gelöscht."); });
 }
 
 // Web-Debug-Seite starten
@@ -488,6 +514,8 @@ inline void MYDBG_startWebDebug()
             <button id="deleteLogsBtn">Logdateien löschen</button>
         </div>
         <div id="status">Verbindung wird aufgebaut...</div>
+        <div id="resetGrund" style="margin:5px 10px; color:#ccc;">Letzter Reset: unbekannt</div>
+
     </div>
 
     <table id="logTable">
@@ -500,8 +528,7 @@ inline void MYDBG_startWebDebug()
                 <th>Nachricht</th>
                 <th>Variable</th>
                 <th>Wert</th>
-                <th>Watchdog</th>
-                <th>ResetGrund</th>
+               
             </tr>
         </thead>
         <tbody id="logBody"></tbody>
@@ -550,9 +577,7 @@ inline void MYDBG_startWebDebug()
             "<td>" + (data.millis || "-") + "</td>" +
             "<td>" + data.msg + "</td>" +
             "<td>" + data.varName + "</td>" +
-            "<td>" + data.varValue + "</td>" +
-            "<td>" + (data.watchdog ? "<b style='color:red;'>WATCHDOG</b>" : "") + "</td>" +
-            "<td>" + (data.resetReason > 1 ? interpretResetReason(data.resetReason) : "") + "</td>";
+            "<td>" + data.varValue + "</td>" ;
 
         logBody.insertBefore(row, logBody.firstChild);
 

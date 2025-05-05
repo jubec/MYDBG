@@ -156,7 +156,7 @@ void setup()
   
  // MYDBG_MENUE(); // Konsolenmenü für Debug-Einstellungen kann auch hier aufgerufen werden
 
-  good_Anzeige_Serial(); // Beispiel für gute Serial-Ausgabe wie mit Serial.println()
+ // good_Anzeige_Serial(); // Beispiel für gute Serial-Ausgabe wie mit Serial.println()
   
 }// Ende von setup()
 
