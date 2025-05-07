@@ -56,6 +56,41 @@ inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 void deleteJsonLogs();
 inline void MYDBG_autoInitEchoLastLog();
 
+struct MYDBG_ResetInfo
+{
+    const char *text;
+    const char *farbe;
+};
+
+inline MYDBG_ResetInfo MYDBG_interpretResetReason(esp_reset_reason_t rsn)
+{
+    switch (rsn)
+    {
+    case ESP_RST_PANIC:
+        return {"Kernel Panic", "#FF4444"}; // rot
+    case ESP_RST_INT_WDT:
+        return {"Interrupt Watchdog", "#FF6600"}; // orange
+    case ESP_RST_TASK_WDT:
+        return {"Task Watchdog", "#FF6600"}; // orange
+    case ESP_RST_WDT:
+        return {"Allgemeiner WDT", "#FF6600"}; // orange
+    case ESP_RST_DEEPSLEEP:
+        return {"Deep Sleep Wakeup", "#00AAAA"}; // blaugrün
+    case ESP_RST_BROWNOUT:
+        return {"Brownout (Spannung)", "#AA00AA"}; // violett
+    case ESP_RST_SDIO:
+        return {"SDIO Reset", "#CCCC00"}; // gelb
+    case ESP_RST_SW:
+        return {"Software Reset", "#AAAAAA"}; // grau
+    case ESP_RST_EXT:
+        return {"Externer Reset", "#8888FF"}; // hellblau
+    case ESP_RST_POWERON:
+        return {"Power-On Reset", "#44FF44"}; // grün
+    default:
+        return {"Unbekannt", "#888888"}; // grau
+    }
+}
+
 inline void MYDBG_autoInit()
 {
 #ifndef MYDBG_NO_AUTOINIT
@@ -67,53 +102,12 @@ inline void MYDBG_autoInit()
     if (!MYDBG_timeInitDone)
         MYDBG_initTime(); // Gibt bereits bei Fehler selbstständig Warnung aus
 
-   
-
     if (MYDBG_resetGrundText == "" && !MYDBG_resetGrundExported)
     {
-        esp_reset_reason_t rsn = esp_reset_reason();
-        switch (rsn)
-        {
-        case ESP_RST_PANIC:
-            MYDBG_resetGrundText = "Panic";
-            break;
-        case ESP_RST_INT_WDT:
-            MYDBG_resetGrundText = "Int-WDT";
-            break;
-        case ESP_RST_TASK_WDT:
-            MYDBG_resetGrundText = "Task-WDT";
-            break;
-        case ESP_RST_WDT:
-            MYDBG_resetGrundText = "WDT";
-            break;
-        case ESP_RST_DEEPSLEEP:
-            MYDBG_resetGrundText = "DeepSleep";
-            break;
-        case ESP_RST_BROWNOUT:
-            MYDBG_resetGrundText = "Brownout";
-            break;
-        case ESP_RST_SDIO:
-            MYDBG_resetGrundText = "SDIO";
-            break;
-        case ESP_RST_SW:
-            MYDBG_resetGrundText = "SW-Reset";
-            break;
-        case ESP_RST_EXT:
-            MYDBG_resetGrundText = "ExtReset";
-            break;
-        case ESP_RST_POWERON:
-            MYDBG_resetGrundText = "PowerOn";
-            break;
-        default:
-            break;
-        }
-
-        // Nur wenn tatsächlich etwas gesetzt wurde:
-        if (MYDBG_resetGrundText != "")
-            MYDBG_resetGrundExported = true;
+        MYDBG_ResetInfo info = MYDBG_interpretResetReason(esp_reset_reason());
+        MYDBG_resetGrundText = info.text;
+        MYDBG_resetGrundExported = true;
     }
-
-    
 
 #ifndef MYDBG_WEBDEBUG_NUR_MANUELL
     if (!MYDBG_webDebugEnabled)
@@ -208,6 +202,81 @@ inline void MYDBG_autoInitEchoLastLog()
             }
         }
     }
+    MYDBG_writeWatchdogRestartFromLastLog();
+}
+inline void MYDBG_writeWatchdogRestartFromLastLog()
+{
+    esp_reset_reason_t rsn = esp_reset_reason();
+
+    // Nur beim Neustart auslösen – einmal pro Boot
+    if (!LittleFS.exists("/mydbg_data.json"))
+        return;
+
+    File file = LittleFS.open("/mydbg_data.json", "r");
+    if (!file)
+        return;
+
+    StaticJsonDocument<2048> doc;
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    if (error || !doc["log"].is<JsonArray>())
+        return;
+
+    JsonArray arr = doc["log"].as<JsonArray>();
+    if (arr.size() == 0)
+        return;
+
+    JsonObject lastEntry = arr[0];
+
+    // Neuen Watchdog-Eintrag vorbereiten
+    StaticJsonDocument<2048> wdDoc;
+
+    if (LittleFS.exists("/mydbg_watchdog.json"))
+    {
+        File f = LittleFS.open("/mydbg_watchdog.json", "r");
+        if (f)
+        {
+            deserializeJson(wdDoc, f);
+            f.close();
+        }
+    }
+
+    JsonArray wdArr = wdDoc["watchdogs"].is<JsonArray>() ? wdDoc["watchdogs"].as<JsonArray>() : wdDoc.createNestedArray("watchdogs");
+
+    JsonObject copy = wdArr.createNestedObject();
+    for (JsonPair kv : lastEntry)
+        copy[kv.key()] = kv.value();
+
+    MYDBG_ResetInfo info = MYDBG_interpretResetReason(rsn);
+    copy["ResetGrund"] = info.text;
+    copy["reason"] = (int)rsn;
+    copy["farbe"] = info.farbe;
+
+    // Kategorisierung nach Wichtigkeit
+    switch (rsn)
+    {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_BROWNOUT:
+        copy["kritisch"] = true;
+        break;
+    default:
+        copy["kritisch"] = false;
+        break;
+    }
+
+    // FIFO: Nur letzte N Einträge behalten
+    while (wdArr.size() > MYDBG_MAX_WATCHDOGS)
+        wdArr.remove(wdArr.size() - 1); // ältester entfernen
+
+    File out = LittleFS.open("/mydbg_watchdog.json", "w");
+    if (out)
+    {
+        serializeJson(wdDoc, out);
+        out.close();
+    }
 }
 
 // Einfache Textzeile an WebClient senden
@@ -221,18 +290,14 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     doc["varName"] = varName;
     doc["varValue"] = varValue;
     doc["millis"] = millis();                              // NEU
+
     if (MYDBG_resetGrundText != "")
     {
+        MYDBG_ResetInfo info = MYDBG_interpretResetReason(esp_reset_reason());
         doc["resetReason"] = (int)esp_reset_reason();
-        doc["watchdog"] = (esp_reset_reason() == ESP_RST_WDT || esp_reset_reason() == ESP_RST_TASK_WDT);
-        doc["ResetGrund"] = MYDBG_resetGrundText;
-        MYDBG_resetGrundText = ""; // ✅ nur ein einziges Mal
-    }
-    else
-    {
-        doc["resetReason"] = 0;
-        doc["watchdog"] = false;
-        doc["ResetGrund"] = "";
+        doc["ResetGrund"] = info.text;
+        doc["ResetColor"] = info.farbe;
+        MYDBG_resetGrundText = ""; // ✅ Nur einmal senden
     }
 
     if (MYDBG_filesystemReady)
@@ -565,14 +630,43 @@ inline void MYDBG_startWebDebug()
         }
 
         if (data.resetReason !== undefined && data.resetReason > 0) {
-            const grundText = interpretResetReason(data.resetReason);
+            const grundText = data.ResetGrund || interpretResetReason(data.resetReason);
+            const color = data.ResetColor || "#ccc";
             resetDiv.innerText = "Letzter Reset: " + grundText;
+            resetDiv.style.color = color;
         }
+
     }
 
-    let conn = new WebSocket('ws://' + location.host + '/ws');
-    conn.onopen = () => statusDiv.innerText = "Verbindung aktiv. Speicher unbekannt.";
+    function setVerbindungsStatus(ok) {
+    if (ok) {
+        statusDiv.innerText = "✅ Verbindung aktiv.";
+        statusDiv.style.color = "#0f0"; // grün
+    } else {
+        statusDiv.innerText = "❌ Keine Verbindung!";
+        statusDiv.style.color = "#f00"; // rot
+    }
+}
+
+let conn;
+
+function startWebSocket() {
+    conn = new WebSocket('ws://' + location.host + '/ws');
+
+    conn.onopen = () => {
+        setVerbindungsStatus(true);
+    };
+
+    conn.onclose = () => {
+        setVerbindungsStatus(false);
+        setTimeout(startWebSocket, 3000); // Automatisch erneut verbinden
+    };
+
     conn.onmessage = handleMessage;
+}
+
+startWebSocket();
+
 
     document.getElementById('showJsonBtn').addEventListener('click', () => {
         window.open('/mydbg_data.json', '_blank');
@@ -914,6 +1008,18 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
 
     Serial.println();
     Serial.println(String("=== MYDBG Menü (aufgerufen in: ") + aufruferFunc + ") ===");
+    // ResetGrund gleich am Anfang anzeigen
+    esp_reset_reason_t rsn = esp_reset_reason();
+    MYDBG_ResetInfo info = MYDBG_interpretResetReason(rsn);
+
+    Serial.printf("Letzter Reset: %s (Code %d)\n", info.text, rsn);
+
+    // Optional: deutliches Warnsignal bei Watchdog
+    if (rsn == ESP_RST_WDT || rsn == ESP_RST_TASK_WDT || rsn == ESP_RST_INT_WDT)
+    {
+        Serial.println("⚠️  ⚠️  ⚠️  Watchdog-Reset erkannt! ⚠️  ⚠️  ⚠️");
+    }
+
     if (MYDBG_filesystemReady)
     {
         size_t total = LittleFS.totalBytes();
