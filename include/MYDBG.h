@@ -40,8 +40,6 @@ static bool MYDBG_resetGrundExported = false; // Nur einmal setzen (persistente
 AsyncWebServer MYDBG_server(80); // Webserver auf Port 80
 AsyncWebSocket MYDBG_ws("/ws");  // WebSocket auf Pfad /ws
 
-
-
 inline void MYDBG_streamWebLine(const String &msg);
 inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, const String &varValue, const String &func, int zeile);
 inline String MYDBG_getTimestamp();
@@ -55,6 +53,7 @@ inline void MYDBG_MENUE();
 inline void MYDBG_initTime(const char *ntpServer = "pool.ntp.org");
 void deleteJsonLogs();
 inline void MYDBG_autoInitEchoLastLog();
+inline void MYDBG_writeWatchdogRestartFromLastLog();
 
 struct MYDBG_ResetInfo
 {
@@ -289,7 +288,7 @@ inline void MYDBG_streamWebLineJSON(const String &msg, const String &varName, co
     doc["msg"] = msg;
     doc["varName"] = varName;
     doc["varValue"] = varValue;
-    doc["millis"] = millis();                              // NEU
+    doc["millis"] = millis(); // NEU
 
     if (MYDBG_resetGrundText != "")
     {
@@ -586,6 +585,15 @@ inline void MYDBG_startWebDebug()
     let mainTitle = document.getElementById('mainTitle');
     let toggleBtn = document.getElementById('toggleProtocolBtn');
     let protocolActive = true;
+    let lastMessageTime = Date.now();
+
+    function checkConnectionAlive() {
+        let now = Date.now();
+        if (now - lastMessageTime > 15000) {
+            setVerbindungsStatus(false); // keine Nachricht seit 5 Sekunden
+        }
+    }
+    setInterval(checkConnectionAlive, 1000); // prüfe jede Sekunde
 
     function interpretResetReason(code) {
         const reasons = {
@@ -610,6 +618,8 @@ inline void MYDBG_startWebDebug()
     }
 
     function handleMessage(event) {
+        lastMessageTime = Date.now(); // jedes Paket "hält die Verbindung am Leben"
+
         if (!protocolActive) return;
 
         let data = JSON.parse(event.data);
@@ -657,10 +667,15 @@ function startWebSocket() {
         setVerbindungsStatus(true);
     };
 
-    conn.onclose = () => {
-        setVerbindungsStatus(false);
-        setTimeout(startWebSocket, 3000); // Automatisch erneut verbinden
-    };
+    function reconnectWebSocket() {
+  setVerbindungsStatus(false);
+  setTimeout(() => {
+    startWebSocket(); // wiederholen bis verbunden
+  }, 5000);
+}
+
+conn.onclose = reconnectWebSocket;
+
 
     conn.onmessage = handleMessage;
 }
