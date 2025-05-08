@@ -1,5 +1,5 @@
 
-// Datei: main.cpp – Beispiel für MYDBG 
+// Datei: main.cpp – Beispiel für MYDBG vom 08.05.2025
 // Beschreibung: Beispiel für die Verwendung der MYDBG-Bibliothek zur Ausgabe von Debug-Informationen und zur Überwachung des Programms.
 // Diese Datei enthält die Hauptlogik des Programms, einschließlich WLAN-Verbindung, Debug-Ausgaben und  Beispielanwendungen.
 // Die MYDBG-Bibliothek wird verwendet, um Debug-Informationen in der Konsole und über das Web bereitzustellen.
