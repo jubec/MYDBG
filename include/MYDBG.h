@@ -1,4 +1,4 @@
-// Datei: MYDBG.h – main am 05.06.2025 _clean (angepasst für Port 56745)
+// MYDBG Debug für Arduino-Code MfG jubec// Datei: MYDBG.h – main am 05.06.2025 _clean (angepasst für Port 56745)
 /*
   MYDBG(…) – universelles Debug-Makro für Konsole + Web
 
