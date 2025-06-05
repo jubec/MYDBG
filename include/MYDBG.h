@@ -241,7 +241,7 @@ inline void MYDBG_fillResetInfo(JsonObject &doc, bool mitFarbe = true)
 // Speichert den Watchdog mit dem MYDBUG(x, ...) vor dem Watchdog-Reset
 inline void MYDBG_writeWatchdogRestartFromLastLog()
 {
-    static bool alreadyWritten = false;
+    
     if (alreadyWritten)
         return;
     alreadyWritten = true;
