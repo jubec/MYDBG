@@ -1,78 +1,83 @@
-🧩 MYDBG Debug-Bibliothek für ESP32
+# 🧩 MYDBG Debug-Bibliothek für ESP32
 
-📄 Überblick
+## 📄 Überblick
 
-In der typischen Arduino-Entwicklung dienen Serial.print() und delay() oft als einfache Hilfsmittel, um den Programmablauf und den Wert einzelner Variablen über die serielle Konsole zu beobachten. Doch diese Methode hat viele Grenzen:
+In der typischen Arduino-Entwicklung dienen `Serial.print()` und `delay()` oft als einfache Hilfsmittel, um den Programmablauf und den Wert einzelner Variablen über die serielle Konsole zu beobachten. Doch diese Methode hat viele Grenzen:
 
-Man sieht nicht, in welcher Funktion, an welcher Zeile oder zu welchem Zeitpunkt der Aufruf stattgefunden hat.
+- Man sieht nicht, in welcher Funktion, an welcher Zeile oder zu welchem Zeitpunkt der Aufruf stattgefunden hat.
+- Es fehlt jegliche Dokumentation über zurückliegende Ereignisse.
+- Eine Überwachung ist nur per USB-Kabel möglich.
 
-Es fehlt jegliche Dokumentation über zurückliegende Ereignisse.
+Genau aus diesem Bedarf heraus ist **MYDBG** entstanden: Ein modernes Debug-Werkzeug, das die typischen Grenzen von `Serial.print()` überwindet.
 
-Eine Überwachung ist nur über USB-Kabel möglich.
+### MYDBG ermöglicht:
 
-Genau aus diesem Bedarf heraus ist MYDBG entstanden:Ein modernes Debug-Werkzeug, das die typischen Grenzen von Serial.print() überwindet.
+- Präzise Ortung von Ereignissen (Funktion, Zeilennummer)
+- Zeitliche Einordnung mit Zeitstempel und `millis()`
+- Logging in JSON-Dateien (LittleFS im Flashspeicher)
+- Live-Web-Debugging über WLAN & WebSocket, auch ohne USB
 
-MYDBG ermöglicht:
+Mit **MYDBG** kannst du den Programmablauf deines ESP32 nachvollziehen, als ob du direkt dabei wärst – selbst wenn das Gerät in einem Gehäuse steckt oder überhaupt nicht an USB angeschlossen ist.
 
-Präzise Ortung von Ereignissen (Funktion, Zeilennummer)
+---
 
-Zeitliche Einordnung mit Zeitstempel und millis()
+## 🧪 Erste Schritte & Integration (VS Code & Arduino IDE)
 
-Logging in JSON-Dateien im internen Flash (LittleFS)
+### 🔧 Visual Studio Code mit PlatformIO
 
-Live-Web-Debugging über WLAN & WebSocket, auch ohne USB
+**Dateien kopieren:**
 
-Mit MYDBG kannst du den Programmablauf deines ESP32 nachvollziehen, als ob du direkt dabei wärst – selbst wenn das Gerät in einem Gehäuse steckt oder überhaupt nicht an USB angeschlossen ist.
+- `MYDBG.h` nach `/include/`
+- Beispielprogramm `main.cpp` in `/src/`
+- `secrets.h` erstellen und in `/include/` speichern (enthält `WIFI_SSID` und `WIFI_PASS`)
+- Alternativ: `WIFI_SSID` und `WIFI_PASS` direkt in `main.cpp` eintragen
 
-🧪 Erste Schritte & Integration (VS Code & Arduino IDE)
+**Includes ergänzen:**
 
-🔧 Visual Studio Code mit PlatformIO
-
-Dateien kopieren:
-
-MYDBG.h nach /include/
-
-Beispielprogramm (main.cpp) in /src/
-
-secrets.h erstellen und in /include/ speichern (enthält WIFI_SSID und WIFI_PASS)
-
-Wer ohne secrets.h arbeiten will, kann WIFI_SSID und WIFI_PASS direkt im main.cpp eingeben
-
-Includes ergänzen:
-
+```cpp
 #include "MYDBG.h"
 #include "secrets.h"
+```
 
-Funktionen aufrufen:
+**Funktionen aufrufen:**
 
-WLAN-Verbindung z. B. im setup() über connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS);
+- WLAN-Verbindung z. B. im `setup()` über `connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS);`
+- Debugausgaben über `MYDBG()` einbauen
+- Optional: Menü im `loop()` aufrufen mit `MYDBG_MENUE();`
 
-Debugausgaben über MYDBG() einbauen
+**Webseite testen:**
 
-Optional: Menü im loop() aufrufen mit MYDBG_MENUE();
+Nach erfolgreicher WLAN-Verbindung:  
+Browser öffnen → `http://[ESP32-IP]/status.html`  
+Logdateien können per Webinterface angezeigt oder gelöscht werden.
 
-Webseite testen:
+---
 
-Nach erfolgreicher WLAN-Verbindung: Browser öffnen → http://[ESP32-IP]/status.html
+## 🔍 Verhalten bei Initialisierung
 
-Logdateien können per Webinterface gelöscht oder angezeigt werden
+MYDBG initialisiert automatisch das Dateisystem, die Zeit (via NTP) und den Webserver – jedoch **nur beim ersten `MYDBG()`-Aufruf mit `wait > 0`**.  
+Nur im Fehlerfall erfolgt eine Ausgabe auf der Konsole (z. B. wenn die Zeit nicht verfügbar ist oder das Dateisystem nicht bereit ist).
 
-🔍 Verhalten bei Initialisierung
+---
 
-MYDBG initialisiert automatisch das Dateisystem, die Zeit (via NTP) und den Webserver – jedoch nur beim ersten MYDBG-Aufruf mit ************wait > 0. Nur im Fehlerfall wird etwas auf der Konsole ausgegeben (z. B. wenn die Zeit nicht verfügbar ist oder das Dateisystem nicht bereit ist).
+## ⚠️ Hinweis zur Systemlast
 
-🔧 Hinweis zur Systemlast
+Die Systemlast des ESP32 durch MYDBG ist erhöht – vor allem durch Lesepausen (`wait`) und das Speichern der Debug-Daten im Flash. Der Watchdog wird daher auf einen höheren Wert gesetzt.
 
-Die Systemlast des ESP32 durch MYDBG ist erhöht – vor allem durch Lesepausen (wait) und das Speichern der Debug-Daten im Flash. Der Watchdog wird daher auf einen höheren Wert gesetzt.Da Debugging den Programmablauf beeinflussen kann, empfiehlt es sich, vor dem Echtbetrieb MYDBG vollständig zu deaktivieren:
+Da Debugging den Programmablauf beeinflussen kann, empfiehlt es sich, vor dem Echtbetrieb MYDBG vollständig zu deaktivieren:
 
-#include "MYDBG.h" auskommentieren
-
-Alle MYDBG(...)-Zeilen mit Suchen & Ersetzen ersetzen durch //MYDBG(...)
+```cpp
+// #include "MYDBG.h"
+// alle MYDBG(...) Zeilen per Suchen & Ersetzen durch //MYDBG(...)
+```
 
 So lässt sich Debugging bei Bedarf auch schnell wieder aktivieren.
 
-💡 Beispielstart in main.cpp (gekürzt):
+---
 
+## 💡 Beispielstart in `main.cpp` (gekürzt)
+
+```cpp
 void setup() {
   Serial.begin(115200);
   connectToWiFiMitTimeout(WIFI_SSID, WIFI_PASS);
@@ -83,163 +88,107 @@ void loop() {
   MYDBG_MENUE(); // einmalig oder zyklisch aufrufen
   // ... weitere MYDBG-Funktionen testen
 }
+```
 
-🧰 Arduino IDE (alternativ)
+---
 
-MYDBG.h im gleichen Ordner wie die .ino-Datei ablegen
+## 🧰 Arduino IDE (alternativ)
 
-secrets.h ebenfalls dort anlegen (mit SSID und Passwort)
+- `MYDBG.h` im gleichen Ordner wie die `.ino`-Datei ablegen
+- `secrets.h` ebenfalls dort anlegen (mit SSID und Passwort)
 
-Am Anfang der .ino-Datei:
+Am Anfang der `.ino`-Datei:
 
+```cpp
 #include "MYDBG.h"
 #include "secrets.h"
+```
 
-In setup() und loop() wie oben verwenden
+Verwendung wie oben beschrieben.
 
-⚙️ Hauptfunktionen
+---
 
-Funktion
+## ⚙️ Hauptfunktionen
 
-Beschreibung
+| Funktion | Beschreibung |
+|----------|--------------|
+| `MYDBG(0, "Nachricht")` | Serielle Ausgabe ohne Pause, Logging oder WebSocket. Ideal für schnelle Tests. |
+| `MYDBG(0, "Nachricht", variable)` | Wie oben, zusätzlich mit Variablennamen und Wert. |
+| `MYDBG(wait, "Nachricht") (1..9)` | Ausgabe mit Zeitstempel, Pause, JSON-Logging, WebSocket. |
+| `MYDBG(wait, "Nachricht", variable)` | Wie oben, mit Variablenausgabe. Vollständige Logausgabe. |
+| `MYDBG_MENUE()` | Interaktives Konsolenmenü. |
+| `MYDBG_initFilesystem()` | Initialisiert LittleFS, erzeugt/verwaltet Debug-Dateien. |
+| `MYDBG_startWebDebug()` | Startet Debug-Webseite & WebSocket unter `/status.html`. |
+| `MYDBG_getTimestamp()` | Gibt aktuellen Zeitstempel zurück. |
+| `MYDBG_setWatchdog(sek)` | Setzt Watchdog mit definierter Zeit. |
+| `displayJsonLogs()` | Gibt gespeicherte Logs auf Serial aus. |
+| `deleteJsonLogs()` | Löscht gespeicherte Log-Dateien. |
+| `wlanVerbindungPruefenAlleXMin(min)` | Zyklische WLAN-Verbindungsprüfung. |
+| `connectToWiFiMitTimeout(ssid, pw, timeout)` | WLAN-Verbindung mit Timeout herstellen. |
 
-MYDBG(0, "Nachricht")
+---
 
-Gibt einfache Debug-Ausgabe auf der seriellen Konsole aus – wait = 0: ohne Pause, ohne Logging oder Webübertragung. Ideal für schnelle Infos während der Entwicklung.
+## 🌐 Weboberfläche
 
-MYDBG(0, "Nachricht", variable)
+**Aufrufbar unter:** `http://[ESP-IP]/status.html`
 
-Wie oben, zeigt zusätzlich den Variablennamen und -wert. Wird nicht geloggt oder per WLAN übertragen.
+### Funktionen:
 
-MYDBG(wait, "Nachricht") (mit wait = 1..9)
+- Protokoll aktivieren/deaktivieren
+- Logs anzeigen/herunterladen:
+  - `/mydbg_data.json`
+  - `/mydbg_watchdog.json`
+  - `/mydbg_status.json`
+- Logs löschen via `/delete_logs`
+- Live-Daten via WebSocket
+- Zusatzinfos: Speicher, Reset-Grund, `millis()`
 
-Gibt Debug-Informationen mit Zeitstempel aus, pausiert wait Sekunden, schreibt in JSON-Log und überträgt Live per WebSocket.
+---
 
-MYDBG(wait, "Nachricht", variable)
+## ⏳ Wartemodi (`waitIndex` in `MYDBG()`)
 
-Wie oben, mit zusätzlicher Anzeige einer Variable. Diese Aufrufe erzeugen die vollständige Logausgabe (JSON + Web).
+| Wert | Bedeutung |
+|------|-----------|
+| 0 | Nur Konsolenausgabe. Keine Pause, kein Logging/WebSocket. |
+| 1..9 | Ausgabe + Pause (Sekunden), Logging + WebSocket. |
+| >9 | Wird automatisch auf 9 begrenzt. |
 
-MYDBG_MENUE()
+---
 
-Interaktives Konsolenmenü zur Laufzeitsteuerung
+## 📋 Konsolenmenü zur Laufzeit
 
-MYDBG_initFilesystem()
+⚠️ Stelle sicher, dass dein serielles Terminal auf **CR+LF** eingestellt ist.
 
-Initialisiert das LittleFS-Dateisystem. Stellt die Debug-Logs unter /mydbg_data.json, /mydbg_watchdog.json und /mydbg_status.json per Webzugriff zur Verfügung.
+| Eingabe | Funktion |
+|---------|----------|
+| 1 | Debug + Wait aktiv, Eintrag in Logs |
+| 2 | Nur Debug-Ausgabe (schneller) |
+| 3 | Debug vollständig deaktivieren |
+| 4 | Web-Debug aktivieren |
+| 5 | Web-Debug deaktivieren |
+| 6 | Logs anzeigen (Serial) |
+| 7 | Logs löschen |
 
-MYDBG_startWebDebug()
+---
 
-Startet Web-Debug-Webseite & WebSocket unter /status.html
+## 💡 Beispiel
 
-MYDBG_getTimestamp()
-
-Liefert formatierten Zeitstempel (lokal oder Ersatztext)
-
-MYDBG_setWatchdog(sek)
-
-Initialisiert Software-Watchdog (Timeout in Sekunden). Wird automatisch auf hohen Wert gesetzt, um Debug-Verzögerungen abzusichern.
-
-displayJsonLogs()
-
-Gibt gespeicherte Logs auf Serial aus
-
-deleteJsonLogs()
-
-Löscht alle gespeicherten Log-Dateien (data, status, watchdog)
-
-wlanVerbindungPruefenAlleXMin(min)
-
-Prüft zyklisch WLAN-Verbindung (eigene Erweiterung, derzeit optional und nicht aktiv). Nützlich, wenn z. B. ein temporäres Netzwerk zur Kommunikation aufgebaut wird.
-
-connectToWiFiMitTimeout(ssid, pw, timeout)
-
-Stellt WLAN-Verbindung mit Timeout her – ideal für Testumgebungen mit z. B. mobilen Hotspots.
-
-🌐 Weboberfläche
-
-Aufrufbar unter: http://[ESP-IP]/status.html
-
-Funktionen:
-
-Protokoll aktivieren/deaktivieren
-
-JSON-Data- und Watchdog-Logs anzeigen oder herunterladen:/mydbg_data.json,/mydbg_watchdog.json,/mydbg_status.json
-
-Logdateien löschen per Button /delete_logs
-
-Zeigt Live-Daten über WebSocket
-
-Zusätzliche Infos: Speicherplatz, Reset-Grund, millis()
-
-⏳ Wartemodi (waitIndex im MYDBG())
-
-Wert
-
-Bedeutung
-
-0
-
-Nur Konsolenausgabe. Keine Pause, kein WebSocket, kein Logging.
-
-1..9
-
-Wartezeit in Sekunden. Ausgabe mit Zeitstempel, JSON-Logging, WebSocket-Übertragung.
-
->9
-
-Wird automatisch auf 9s begrenzt
-
-📋 Konsolenmenü zur Laufzeit
-
-Eingabe per seriellem Terminal (15s beim ersten Aufruf):
-
-⚠️ Stelle sicher, dass dein serielles Terminal korrekt auf "CR+LF" (Carriage Return + Line Feed) als Zeilenende eingestellt ist. In PlatformIO findest du diese Einstellung unten rechts im Serial Monitor. Für die Eingabe drücke einfach Enter nach der Zahlenauswahl.
-
-Eingabe
-
-Funktion
-
-1
-
-Debug-Ausgabe + wait aktiv, Eintrag in WebListen
-
-2
-
-Nur Debug-Ausgabe (keine Pause, um Programmablauf schneller zu machen)
-
-3
-
-Debug deaktivieren (keine Ausgabe auf Konsole oder in Logdateien – reduziert Programmbeeinflussung)
-
-4
-
-Web-Debug aktivieren (wenn nicht aktiv)
-
-5
-
-Web-Debug beenden (Standardzustand)
-
-6
-
-Logs anzeigen (Serial)
-
-7
-
-Logs löschen
-
-💡 Beispiel
-
+```cpp
 int sensorwert = 42;
-MYDBG(0, "Sensorwert erfasst", sensorwert); // Nur Konsole, keine Pause, kein Logging
-MYDBG(2, "Sensorwert erfasst", sensorwert); // 2 Sek. Pause, Logging und Web-Ausgabe
+MYDBG(0, "Sensorwert erfasst", sensorwert); // Nur Konsole
+MYDBG(2, "Sensorwert erfasst", sensorwert); // 2s Pause, Logging, Web
+```
 
-🛠️ Weitere Idee
+---
 
-Konfiguration dauerhaft speichern (z. B. NVS)
+## 🛠️ Weitere Ideen
 
-☕ Zum Schluss
+- Konfiguration in NVS speichern
+- Debug-Ausgabe gezielt an-/abschalten
 
-Wer Debuggen kann, kann auch Programmieren – und wer beides kann, fragt dann ChatGPT. 😄
+---
 
+## ☕ Zum Schluss
 
-
+**Wer Debuggen kann, kann auch Programmieren –  
+und wer beides kann, fragt dann ChatGPT. 😊**
