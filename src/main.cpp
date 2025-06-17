@@ -45,7 +45,7 @@ void connectToWiFiMitTimeout(const char *ssid, const char *passwort, int timeout
   }
 }
 // WLAN regelmäßig prüfen (alle X Minuten), und ggf. erneut verbinden
-void wlanVerbindungPruefenAlleXMin(unsigned int minuten = 5)
+void wlanVerbindungPruefenAlleXMin(unsigned int minuten = 1)
 {
   static unsigned long letztePruefung = 0;
   unsigned long intervall = minuten * 60 * 1000UL;

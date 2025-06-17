@@ -1050,10 +1050,10 @@ inline void MYDBG_MENUE_IMPL(const char *aufruferFunc)
 
         Serial.println("[MYDBG] WLAN-Status: " + String(WiFi.status() == WL_CONNECTED ? "verbunden mit : " + String(WiFi.SSID()) : "nicht verbunden"));
 
-        Serial.println("[MYDBG] Web-Debug Status: http://" + WiFi.localIP().toString() + "/MYDBG_status.html");
-        Serial.println("[MYDBG] Web-Debug Daten: http://" + WiFi.localIP().toString() + "/mydbg_data.jso n");
-        Serial.println("[MYDBG] Web-Debug Watchdog: http://" + WiFi.localIP().toString() + "/mydbg_watchdog.json");
-        Serial.println("[MYDBG] Web-Debug: http://" + WiFi.localIP().toString() + "/mydbg_delete_logs");
+        Serial.println("[MYDBG] Web-Debug Status: http://" + WiFi.localIP().toString() + ":56745/MYDBG_status.html");
+        Serial.println("[MYDBG] Web-Debug Daten: http://" + WiFi.localIP().toString() + ":56745/mydbg_data.json");
+        Serial.println("[MYDBG] Web-Debug Watchdog: http://" + WiFi.localIP().toString() + ":56745/mydbg_watchdog.json");
+        Serial.println("[MYDBG] Web-Debug: http://" + WiFi.localIP().toString() + ":56745/mydbg_delete_logs");
 
         Serial.println("=============================================================================\n");
         startInfoGezeigt = true;
